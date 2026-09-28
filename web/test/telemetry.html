@@ -1,0 +1,75 @@
+<!doctype html><meta charset="utf-8"><title>telemetry (browser)</title>
+<!-- TELEMETRY browser harness: driven by test/telemetry.browser.mjs (headless Chrome). Files come from the file input
+     (puppeteer uploadFile -> disk-backed File objects, nothing is copied). -->
+<input type="file" id="f" multiple><pre id="o"></pre>
+<script type="module">
+import { openMp4, mainVideoTrack, mainAudioTrack, readSamples, videoDecoderConfig, audioDecoderConfig } from '/src/mp4.ts';
+import { loadTelemetry } from '/src/telemetry.ts';
+
+const file = (i) => document.getElementById('f').files[i];
+
+window.__env = async () => {
+  const out = { ua: navigator.userAgent, gpu: !!navigator.gpu, VideoDecoder: typeof VideoDecoder, VideoEncoder: typeof VideoEncoder };
+  try {
+    const a = await navigator.gpu?.requestAdapter();
+    out.adapter = a ? { vendor: a.info?.vendor, arch: a.info?.architecture, desc: a.info?.description, f16: a.features.has('shader-f16') } : null;
+  } catch (e) { out.adapterErr = String(e); }
+  return out;
+};
+
+window.__telemetry = async (i, frameIdx, imuIdx, concurrency) => {
+  const f = file(i);
+  const t0 = performance.now();
+  const info = await openMp4(f);
+  const t1 = performance.now();
+  const tel = await loadTelemetry(f, info, undefined, { concurrency });
+  const t2 = performance.now();
+  const q = [];
+  for (const k of imuIdx) for (let c = 0; c < 4; c++) q.push(tel.imuQ[4 * k + c]);
+  return {
+    name: f.name, size: f.size, openMs: t1 - t0, parseMs: t2 - t1, frames: tel.framePts.length, imu: tel.imuT.length,
+    camera: tel.camera, fps: tel.fps, readoutS: tel.readoutS, imuRate: tel.imuRate, hasHighrate: tel.hasHighrate,
+    eisBaked: tel.eisBaked, lens: tel.lens, segments: tel.segments, warnings: tel.warnings,
+    frameT: frameIdx.map((k) => tel.frameT[k]), framePts: frameIdx.map((k) => tel.framePts[k]),
+    imuT: imuIdx.map((k) => tel.imuT[k]), imuQ: q,
+  };
+};
+
+/** WebCodecs: is the file's own config supported, and does the first keyframe decode? */
+window.__decode = async (i) => {
+  const f = file(i);
+  const info = await openMp4(f);
+  const vt = mainVideoTrack(info);
+  const cfg = videoDecoderConfig(vt);
+  const out = { codec: cfg.codec, colorSpace: cfg.colorSpace };
+  for (const hw of ['prefer-hardware', 'no-preference', 'prefer-software']) {
+    try { out['supported:' + hw] = (await VideoDecoder.isConfigSupported({ ...cfg, hardwareAcceleration: hw })).supported; }
+    catch (e) { out['supported:' + hw] = 'ERR ' + e; }
+  }
+  const at = mainAudioTrack(info);
+  if (at) {
+    try { out.audio = { codec: at.codecString, supported: (await AudioDecoder.isConfigSupported(audioDecoderConfig(at))).supported }; }
+    catch (e) { out.audio = { codec: at.codecString, err: String(e) }; }
+  }
+  // decode the first 2 frames (sample 0 is a sync sample)
+  const frames = [];
+  let err = null;
+  const t0 = performance.now();
+  const dec = new VideoDecoder({ output: (fr) => { frames.push({ w: fr.displayWidth, h: fr.displayHeight, cw: fr.codedWidth, ch: fr.codedHeight, format: fr.format, ts: fr.timestamp, cs: fr.colorSpace?.toJSON?.() }); fr.close(); }, error: (e) => { err = String(e); } });
+  dec.configure({ ...cfg, hardwareAcceleration: 'no-preference' });
+  const data = await readSamples(f, vt, 0, 2);
+  data.forEach((d, j) => dec.decode(new EncodedVideoChunk({ type: vt.sync[j] ? 'key' : 'delta', timestamp: Math.round(vt.cts[j] * 1e6), data: d })));
+  try { await dec.flush(); } catch (e) { err = err ?? String(e); }
+  dec.close();
+  out.decodeMs = performance.now() - t0;
+  out.frames = frames;
+  out.err = err;
+  return out;
+};
+window.__worker = (i, frameIdx, imuIdx) => new Promise((ok) => {
+  const w = new Worker(new URL('./telemetry.worker.ts', import.meta.url), { type: 'module' });
+  w.onmessage = (e) => { ok(e.data); w.terminate(); };
+  w.postMessage({ file: file(i), frameIdx, imuIdx });
+});
+window.__ready = true;
+</script>

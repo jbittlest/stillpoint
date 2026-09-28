@@ -3,7 +3,7 @@
 **A gyro + vision video stabilizer for DJI O3 / O4 / Avata and Osmo Action 4 footage. It targets the micro-jitter and jello that other gyro stabilizers leave behind.**
 
 **[jbittlest.github.io/stillpoint](https://jbittlest.github.io/stillpoint/)** has the before/after videos and the full results.
-The in-browser stabilizer is coming online at **[jbittlest.github.io/stillpoint/app/](https://jbittlest.github.io/stillpoint/app/)**. It runs entirely on your own machine (WebCodecs + WebGPU), and your video is never uploaded.
+**Stabilize a clip in your browser: [jbittlest.github.io/stillpoint/app/](https://jbittlest.github.io/stillpoint/app/)**. It runs entirely on your own machine (WebCodecs + WebGPU), and your video is never uploaded.
 
 ## What it does
 
@@ -56,7 +56,24 @@ Always use the original MP4 from the card. Re-exports drop the motion track.
 
 ## Web stabilizer
 
-The browser app (`web/`, TypeScript + Vite) parses the MP4 and the DJI telemetry, solves the path, warps with WebGPU and encodes with WebCodecs, all client-side. It is published to `docs/app/` on GitHub Pages. It works best in current Chrome or Edge on a desktop. HEVC clips need hardware HEVC decoding.
+**[jbittlest.github.io/stillpoint/app/](https://jbittlest.github.io/stillpoint/app/)**: open it, drop in an original DJI MP4, check the preview, and click Stabilize. The stabilized MP4 is saved to your computer.
+
+* **Gyro-precise mode.** The browser app (`web/`, TypeScript + Vite) is a port of the engine's gyro path: DJI telemetry parsing and timing, per-row rolling shutter, exposure-averaged rows, the crop-constrained smoother, and the same KB4 fisheye warp in WebGPU. The Mac app's vision pass isn't in the browser yet. On DJI_0034 (15–40 s), with the crop matched to the Python engine, the browser output measured 0.76 px HF jitter (raw 5.58, Gyroflow 1.31, Python gyro-only 0.70, Mac app with vision 0.51). Its warp matches the Metal renderer on the same plan to within 0.08 px.
+* **Runs locally.** Decoding, warping and encoding all happen in your browser with WebCodecs and WebGPU. Nothing is uploaded. The site is static files on GitHub Pages.
+* **Browsers.** Current Chrome or Edge on a desktop or laptop, tested in Chrome on an Apple-silicon Mac. Safari 26 on a Mac has WebGPU and WebCodecs but is untested. Firefox isn't supported. O3 clips are H.264. Osmo Action 4 and O4 Pro clips are HEVC and need hardware HEVC decoding (Apple-silicon Macs, most recent Windows GPUs). The app checks the browser when it opens and says what's missing.
+* **Speed.** On an Apple-silicon Mac, 4K exports run at about 40–58 fps, limited by the hardware encoder.
+
+Build and test:
+
+```sh
+cd web
+npm install
+npm run dev            # http://localhost:5173
+npm run typecheck && npm test
+npm run build:pages    # rebuilds docs/app/ for GitHub Pages (base /stillpoint/app/)
+node test/app.e2e.mjs --clip CLIP.MP4            # headless Chrome end-to-end export, checked with ffprobe
+node test/app.e2e.mjs --clip CLIP.MP4 --url https://jbittlest.github.io/stillpoint/app/   # against the live site
+```
 
 ## Mac app
 

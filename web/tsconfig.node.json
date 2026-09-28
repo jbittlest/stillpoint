@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "@webgpu/types",
+      "vite/client"
+    ],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "noImplicitAny": false
+  },
+  "include": [
+    "test/**/*.ts",
+    "vite.config.ts"
+  ]
+}

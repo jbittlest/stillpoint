@@ -1,0 +1,182 @@
+{
+ "name": "o3_0034",
+ "video": "DJI_0034.MP4",
+ "start_frame": 0,
+ "tel": {
+  "camera": "DJI O3 (FC8383)",
+  "width": 3840,
+  "height": 2160,
+  "fps": 59.94005994005994,
+  "nFrames": 3029,
+  "readoutS": 0.00972473992840005,
+  "imuRate": 1999.0249943262868,
+  "hasHighrate": true,
+  "eisBaked": false,
+  "segments": [
+   [
+    0,
+    3028
+   ]
+  ],
+  "imuT0": -0.008491611217436912,
+  "imuDt": 0.0005002438703140304,
+  "nImu": 101019,
+  "imuGridDev": 6.650235917504688e-14,
+  "lens": {
+   "model": "kb4",
+   "fx": 1405.1292724609375,
+   "fy": 1405.1292724609375,
+   "cx": 1919.5,
+   "cy": 1079.5,
+   "k": [
+    0.24991768598556519,
+    0.0136057548224926,
+    -0.06208358332514763,
+    0.012193071655929089
+   ],
+   "width": 3840,
+   "height": 2160
+  }
+ },
+ "python": {
+  "fx0": 1544.8019299464606,
+  "max_out_fx": 2317.202894919691,
+  "smoothness": 1.0,
+  "out_w": 3840,
+  "out_h": 2160,
+  "n_rows": 32,
+  "optimize_s": 6.2306188750008005,
+  "build_plan_s": 0.06711674999678507,
+  "exposure_avg": false,
+  "zoom_changes": 30,
+  "max_zoom": 1.004737064891737,
+  "max_violation_px_margin8": 0.1330955752380305,
+  "max_violation_px_margin0": -7.8669044247619695,
+  "n_viol_margin0": 0,
+  "n_viol_margin8": 3,
+  "frac_binding": 0.0019808517662594917,
+  "max_phi_deg": 7.907370210227126,
+  "iters": [
+   {
+    "it": 0,
+    "tr": 0.06,
+    "obj": 15022.57,
+    "lin_s": 0.17,
+    "solve_s": 1.107,
+    "n_crop_rows": 36348,
+    "max_step_deg": 3.437746769672545,
+    "step_frame": 1407,
+    "max_slack": 6.52507344534488e-11,
+    "qp_iters": 20,
+    "qp_solve_s": 0.953,
+    "total_s": 1.281,
+    "max_viol_px": -18.109772418099965,
+    "viol_frame": 1483,
+    "n_viol": 0
+   },
+   {
+    "it": 1,
+    "tr": 0.03,
+    "obj": 10855.33,
+    "lin_s": 0.283,
+    "solve_s": 1.584,
+    "n_crop_rows": 3038,
+    "max_step_deg": 1.7188733853907454,
+    "step_frame": 1411,
+    "max_slack": 4.376610069778621e-14,
+    "qp_iters": 26,
+    "qp_solve_s": 1.536,
+    "total_s": 1.87,
+    "max_viol_px": 2.999157366063173,
+    "viol_frame": 1397,
+    "n_viol": 4
+   },
+   {
+    "it": 2,
+    "tr": 0.012,
+    "obj": 9893.42,
+    "lin_s": 0.279,
+    "solve_s": 1.103,
+    "n_crop_rows": 236,
+    "max_step_deg": 0.6875493541569613,
+    "step_frame": 1411,
+    "max_slack": 1.04065433737891e-14,
+    "qp_iters": 25,
+    "qp_solve_s": 0.933,
+    "total_s": 1.384,
+    "max_viol_px": 0.6306216503267024,
+    "viol_frame": 1397,
+    "n_viol": 6
+   },
+   {
+    "it": 3,
+    "tr": 0.005,
+    "obj": 9540.78,
+    "lin_s": 0.331,
+    "solve_s": 1.051,
+    "n_crop_rows": 120,
+    "max_step_deg": 0.28647889756464584,
+    "step_frame": 1411,
+    "max_slack": 1.511601663150965e-14,
+    "qp_iters": 25,
+    "qp_solve_s": 0.907,
+    "total_s": 1.385,
+    "max_viol_px": 0.14598101613091785,
+    "viol_frame": 1397,
+    "n_viol": 2
+   }
+  ]
+ },
+ "layout": {
+  "framePts": {
+   "offset": 0,
+   "dtype": "f64",
+   "length": 3029
+  },
+  "frameT": {
+   "offset": 24232,
+   "dtype": "f64",
+   "length": 3029
+  },
+  "exposureS": {
+   "offset": 48464,
+   "dtype": "f64",
+   "length": 3029
+  },
+  "imuQ32": {
+   "offset": 72696,
+   "dtype": "f32",
+   "length": 404076
+  },
+  "virtQ": {
+   "offset": 1689000,
+   "dtype": "f64",
+   "length": 12116
+  },
+  "outFx": {
+   "offset": 1785928,
+   "dtype": "f64",
+   "length": 3029
+  },
+  "goldFrames": {
+   "offset": 1810160,
+   "dtype": "f64",
+   "length": 150
+  },
+  "goldRowMats": {
+   "offset": 1811360,
+   "dtype": "f64",
+   "length": 43200
+  },
+  "goldRowMatsInst": {
+   "offset": 2156960,
+   "dtype": "f64",
+   "length": 43200
+  },
+  "violPy0": {
+   "offset": 2502560,
+   "dtype": "f64",
+   "length": 3029
+  }
+ }
+}

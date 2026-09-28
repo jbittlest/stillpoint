@@ -1,0 +1,5 @@
+node_modules
+# iCloud duplicates of the node_modules symlink ("node_modules 2", "node_modules 3", ...)
+node_modules */
+dist
+*.log

@@ -336,6 +336,7 @@ footer a{color:var(--ink2)}
       <p class="eyebrow">No install</p>
       <h2>Stabilize a clip<br>in your browser.</h2>
       <p class="lede">Drop in an original DJI MP4. Stillpoint reads the motion data from the file, solves the path, warps every frame on your GPU and saves a stabilized MP4.</p>
+      <p class="lede" style="font-size:clamp(15px,1.6vw,17px)">The browser version is Stillpoint's gyro-precise mode: the same per-row gyro path and GPU warp, without the Mac app's vision pass (yet). On DJI_0034 (15–40 s), at the same crop as the Mac engine, it measured 0.76 px of high-frequency jitter, against 5.58 raw, 1.31 for Gyroflow and 0.51 for the Mac app with vision.</p>
       <a class="btn btn-primary" href="./app/">Open the web stabilizer
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
       <div><span class="privacy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
@@ -354,12 +355,13 @@ footer a{color:var(--ink2)}
     </div>
     <div class="grid3">
       <div class="cam reveal"><h3>DJI O3 Air Unit · Avata · O4 Pro</h3><div class="rate">High-rate attitude · per-row rolling shutter</div>
-        <p>Full support. The O3 records attitude at 2 kHz, and it's the camera the results above were measured on. Record with the camera's own stabilization (EIS / RockSteady) off.</p></div>
+        <p>Full support for the O3 and Avata. The O3 records attitude at 2 kHz, and it's the camera the results above were measured on. O4 Pro files open too, but their timing is assumed from the O3 and hasn't been checked on real O4 footage yet. Record with the camera's own stabilization (EIS / RockSteady) off.</p></div>
       <div class="cam reveal"><h3>Osmo Action 4</h3><div class="rate">1 kHz in 4:3 · 60 Hz in 16:9</div>
         <p>For the best result, shoot 4K 4:3 with RockSteady and HorizonSteady off. That's the only mode where the camera records 1 kHz motion data. 16:9 clips carry one orientation per frame and stabilize at a lower quality.</p></div>
       <div class="cam reveal"><h3>Browsers</h3><div class="rate">WebGPU + WebCodecs</div>
-        <ul><li>Best in current Chrome or Edge on a desktop or laptop.</li>
-        <li>HEVC (H.265) clips need hardware HEVC decoding: any Apple-silicon Mac, and most recent Windows GPUs.</li>
+        <ul><li>Use current Chrome or Edge on a desktop or laptop. Tested in Chrome on an Apple-silicon Mac.</li>
+        <li>Safari 26 on a Mac has everything it needs but hasn't been tested yet. Firefox isn't supported.</li>
+        <li>O3 clips are H.264 and open almost anywhere. Osmo Action 4 and O4 Pro clips are HEVC (H.265) and need hardware HEVC decoding: any Apple-silicon Mac, and most recent Windows GPUs.</li>
         <li>The app checks your browser when it opens and tells you what's missing.</li></ul></div>
     </div>
     <div class="grid3" style="margin-top:18px">

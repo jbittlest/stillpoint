@@ -1,0 +1,44 @@
+<!doctype html><meta charset="utf-8"><title>probe</title><pre id=o></pre>
+<script type="module">
+const out = {};
+out.ua = navigator.userAgent;
+out.gpu = !!navigator.gpu;
+try {
+  const a = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
+  out.adapter = a ? { info: a.info ? { vendor: a.info.vendor, arch: a.info.architecture, desc: a.info.description } : null, features: [...a.features], maxTex: a.limits.maxTextureDimension2D, maxBuf: a.limits.maxBufferSize, maxSB: a.limits.maxStorageBufferBindingSize } : null;
+} catch (e) { out.adapterErr = String(e); }
+out.vd = typeof VideoDecoder, out.ve = typeof VideoEncoder;
+out.fsa = typeof showSaveFilePicker;
+const dec = { h264_4k: { codec: 'avc1.640033', codedWidth: 3840, codedHeight: 2160 },
+  hevc_main10_4k: { codec: 'hvc1.2.4.L153.B0', codedWidth: 3840, codedHeight: 2160 },
+  hevc_main10_43: { codec: 'hvc1.2.4.L156.B0', codedWidth: 3840, codedHeight: 2880 },
+  hevc_main_4k: { codec: 'hvc1.1.6.L153.B0', codedWidth: 3840, codedHeight: 2160 } };
+out.decode = {};
+for (const [k, c] of Object.entries(dec)) {
+  for (const hw of ['prefer-hardware', 'no-preference']) {
+    try { const r = await VideoDecoder.isConfigSupported({ ...c, hardwareAcceleration: hw }); out.decode[k + ':' + hw] = r.supported; } catch (e) { out.decode[k + ':' + hw] = 'ERR ' + e; }
+  }
+}
+const enc = {
+  hevc_main_4k60: { codec: 'hvc1.1.6.L153.B0', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+  hevc_main_43: { codec: 'hvc1.1.6.L156.B0', width: 3840, height: 2880, framerate: 60, bitrate: 100e6 },
+  hevc_main10_4k60: { codec: 'hvc1.2.4.L153.B0', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+  h264_high_4k60: { codec: 'avc1.640034', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+  h264_high_l51: { codec: 'avc1.640033', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+  av1_4k60: { codec: 'av01.0.13M.08', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+  vp9_4k60: { codec: 'vp09.00.51.08', width: 3840, height: 2160, framerate: 60, bitrate: 100e6 },
+};
+out.encode = {};
+for (const [k, c] of Object.entries(enc)) {
+  for (const hw of ['prefer-hardware', 'no-preference']) {
+    for (const lat of ['quality']) {
+      try { const r = await VideoEncoder.isConfigSupported({ ...c, hardwareAcceleration: hw, latencyMode: lat, bitrateMode: 'variable' }); out.encode[k + ':' + hw] = r.supported; } catch (e) { out.encode[k + ':' + hw] = 'ERR ' + e; }
+    }
+  }
+}
+try { const r = await AudioDecoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2 }); out.aac = r.supported; } catch (e) { out.aac = String(e); }
+out.opfs = !!navigator.storage?.getDirectory;
+out.hwConcurrency = navigator.hardwareConcurrency; out.mem = navigator.deviceMemory;
+document.getElementById('o').textContent = JSON.stringify(out, null, 1);
+window.__probe = out;
+</script>

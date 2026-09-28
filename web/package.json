@@ -1,0 +1,27 @@
+{
+  "name": "stillpoint-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Stillpoint in the browser: gyro stabilization for DJI footage with WebCodecs + WebGPU, fully client-side.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:pages": "vite build --mode pages --outDir ../docs/app --emptyOutDir",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.node.json",
+    "test": "vitest run",
+    "test:e2e": "node test/app.e2e.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@webgpu/types": "^0.1.74",
+    "puppeteer-core": "^25.12.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  },
+  "dependencies": {
+    "mediabunny": "^1.60.0"
+  }
+}

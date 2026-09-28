@@ -1,0 +1,36 @@
+# Python / tooling
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Big local intermediates, notes and research (not published)
+work/
+cache/
+research/
+design/
+STATUS.md
+STATUS 2.md
+# iCloud "Desktop & Documents" duplicates ("foo 2.py", "bar 2.md", ...)
+* 2.*
+* 2
+
+# Analysis products and footage
+*.npz
+*.npy
+*.spplan
+*.mov
+*.MOV
+*.MP4
+*.mp4
+!docs/media/*.mp4
+*.log
+
+# Builds
+app/Stillpoint/build/
+app/renderer/.build/
+web/node_modules/
+web/dist/
+
+# macOS
+.DS_Store

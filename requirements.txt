@@ -1,0 +1,8 @@
+# Stillpoint engine (Python 3.12). Versions are the ones the results were produced with.
+numpy>=2.0
+scipy>=1.13
+clarabel>=0.9        # crop-constrained path QP (smooth.py)
+opencv-python>=4.10  # vision check, eval metrics
+av>=14               # PyAV decoders (framestream.py)
+torch>=2.4           # optional: MPS-accelerated preview measurement on Apple silicon
+pytest>=8

@@ -394,6 +394,7 @@ input[type="range"]:disabled { opacity: 0.45; cursor: default; }
 .seg-aspect button[aria-checked="true"] .ar { opacity: 0.95; background: rgba(255, 255, 255, 0.08); }
 .inline-field { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--text2); }
 .inline-derived { color: var(--text3); font-size: 12.5px; white-space: nowrap; }
+.inline-derived.is-hint { color: var(--warn); }
 .num-wrap {
   display: inline-flex; align-items: center; height: 34px; padding: 0 10px; border-radius: 9px;
   background: var(--panel); box-shadow: inset 0 0 0 1px var(--line2); transition: box-shadow 0.15s;

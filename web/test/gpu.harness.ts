@@ -5,6 +5,7 @@
 //             output and an encoder round trip, dumped for test/gpu.golden.py (float64 render_ref.py reference)
 //   bench     4K throughput of warp() -> VideoFrame, GPU pass times (timestamp queries);  variants: tap-fetch A/B
 //   probe / extfit / copyfit / enccolor   the browser-behaviour measurements behind warp.ts's colour contract
+//             (extfit / copyfit [fixture...]: default all fixtures)
 //   scaledself / scaled / shimmer / blend / benchscaled   outputs != source size + the Blender (test/gpu.scaled.ts)
 import o3Fixture from './fixtures/gpu/o3_0026.json';
 import oa4Fixture from './fixtures/gpu/oa4_0005.json';
@@ -164,12 +165,13 @@ async function probe() {
 }
 
 /** Dump a crop of importExternalTexture(textureLoad) RGBA (float32) + the raw planes (when copyTo works). */
-async function extFit() {
+async function extFit(names: string[]) {
   const adapter = (await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }))!;
   const device = await adapter.requestDevice();
   const X0 = 1000, Y0 = 700, N = 256;
   const r: any = {};
-  for (const [name, fx] of Object.entries(FIXTURES)) {
+  for (const name of names) {
+    const fx = FIXTURES[name];
     const key = fx.video.samples.find(s => s.key)!;
     const f = await decodeSample(fx, key.i);
     r[name] = { sample: key.i, format: f.format, colorSpace: f.colorSpace.toJSON() };
@@ -210,12 +212,13 @@ async function extFit() {
 }
 
 /** copyExternalImageToTexture(VideoFrame) into float textures: which precision / conversion survives? */
-async function copyFit() {
+async function copyFit(names: string[]) {
   const adapter = (await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }))!;
   const device = await adapter.requestDevice();
   const X0 = 1000, Y0 = 700, N = 256;
   const r: any = {};
-  for (const [name, fx] of Object.entries(FIXTURES)) {
+  for (const name of names) {
+    const fx = FIXTURES[name];
     const key = fx.video.samples.find(s => s.key)!;
     const f = await decodeSample(fx, key.i);
     r[name] = {};
@@ -704,6 +707,41 @@ async function selftest() {
     }
     fA.close(); fB.close(); wA.destroy(); wB.destroy();
   }
+  // Mixed colour tags on ONE Warper (the retimed-export flicker): VideoToolbox handed a few frames of a clip to the
+  // Warper tagged 'iec61966-2-1' instead of 'bt709' with the same pixels, and the browser converts each frame by its
+  // own tag. Warp the decoder frame (bt709) several times, then copies of its pixels tagged 'iec61966-2-1' / 'linear'
+  // in between: every one must give the decoder frame's luma (one calibration for all frames gave the sRGB-tagged
+  // copy the gamma-1.961 inverse on macOS: ~9 codes darker midtones).
+  {
+    const w = await Warper.create(device, plan, { kernel: 'lanczos3' });
+    const dec = await frames.NV12dec();
+    const raw = await frameBytes(dec);
+    const copy = (transfer: string) => new VideoFrame(raw.buf, { format: raw.format as VideoPixelFormat, codedWidth: W, codedHeight: H,
+      layout: raw.layout, timestamp: 2000, colorSpace: { primaries: 'bt709', transfer: transfer as VideoTransferCharacteristics, matrix: 'bt709', fullRange: false } });
+    const ref = await w.readbackLuma(dec, 0);
+    const seq: [string, () => VideoFrame][] = [['bt709', () => dec], ['bt709', () => dec], ['iec61966-2-1', () => copy('iec61966-2-1')],
+      ['bt709', () => dec], ['linear', () => copy('linear')], ['iec61966-2-1', () => copy('iec61966-2-1')], ['bt709', () => dec]];
+    const mixed: Record<string, number> = {};
+    for (const [i, [tag, mk]] of seq.entries()) {
+      const f = mk();
+      const luma = await w.readbackLuma(f, 0);
+      if (f !== dec) f.close();
+      let emax = 0, esum = 0;
+      for (let p = 0; p < luma.length; p++) { const e = (luma[p] - ref[p]) * 219; emax = Math.max(emax, Math.abs(e)); esum += e; }
+      const emean = esum / luma.length;
+      mixed[`${i}_${tag}`] = +emax.toPrecision(3);
+      // the decoder frame itself: exact; CPU copies may reach the shader as RGBA8 (browser-converted, +-0.5 LSB per
+      // channel) instead of planes: small unbiased differences — a wrong transfer shifts the MEAN by several codes
+      if (f === dec) check(`mixedtags_${i}_${tag}_max_luma_diff_codes`, emax, 0.05);
+      else { check(`mixedtags_${i}_${tag}_max_luma_diff_codes`, emax, 1.5); check(`mixedtags_${i}_${tag}_mean_luma_diff_codes`, Math.abs(emean), 0.1); }
+    }
+    const ci = await w.colorInfo();
+    res.mixedTags = { maxDiff: mixed, classes: ci.classes, decodedTag: `${dec.format}|${dec.colorSpace.transfer}` };
+    const cls = (k: string) => ci.classes.find(c => c.key === k);
+    if (cls('NV12|iec61966-2-1')?.transfer !== 'srgb') fail.push(`sRGB-tagged frames calibrated as ${cls('NV12|iec61966-2-1')?.transfer}`);
+    if (cls('NV12|linear')?.transfer !== 'linear') fail.push(`linear-tagged frames calibrated as ${cls('NV12|linear')?.transfer}`);
+    dec.close(); w.destroy();
+  }
   device.destroy();
   res.pass = fail.length === 0;
   if (fail.length) res.error = 'selftest failed: ' + fail.join('; ');
@@ -717,9 +755,9 @@ const argList = (params.get('args') || '').split(',').filter(a => a && !a.starts
 (async () => {
   try {
     if (mode === 'probe') done(await probe());
-    else if (mode === 'extfit') done(await extFit());
+    else if (mode === 'extfit') done(await extFit(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'enccolor') done(await encColor());
-    else if (mode === 'copyfit') done(await copyFit());
+    else if (mode === 'copyfit') done(await copyFit(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'golden') done(await golden(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'bench') done(await bench(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'variants') done(await variants(argList.length ? argList : Object.keys(FIXTURES)));

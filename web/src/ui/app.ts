@@ -10,7 +10,8 @@ import type { SinkKind } from '../io/mux';
 import { getOpfsExport } from '../io/mux';
 import { bitratePresets, CODEC_LABEL, type CodecOption, type OutCodec, type QualityPreset } from '../io/encode';
 import { outputGeometry } from '../plan';
-import { normalizeFps } from '../retime';
+import { normalizeFps, SAME_RATE_TOL } from '../retime';
+import { CUSTOM_FPS, CUSTOM_W, doneAudioNote, evenClamp, exportTiming, fpsClamp, readNumberField, slowmoLabel, type TimingState } from './exportopts';
 import { detectCaps, verdict, type Caps } from './caps';
 import { aspectLabel, fmtBytes, fmtDuration, fmtEta, fmtFps, fmtRate, fmtShutter, fmtTime } from './format';
 
@@ -36,10 +37,6 @@ const DEFAULT_PREFS: ExportPrefs = { size: 'source', customW: 1600, aspect: 'sou
 const SIZE_KEYS: SizeKey[] = ['source', '2.7k', '1440p', '1080p', '720p', 'custom'];
 const ASPECT_KEYS: AspectChoice[] = ['source', '16:9', '4:3', '1:1', '9:16'];
 const FPS_KEYS: FpsKey[] = ['source', '60', '59.94', '50', '30', '29.97', '25', '24', '23.976', 'custom'];
-const CUSTOM_W = [160, 7680] as const;
-const CUSTOM_FPS = [1, 240] as const;
-const evenClamp = (w: number) => Math.max(CUSTOM_W[0], Math.min(CUSTOM_W[1], 2 * Math.round(w / 2)));
-const fpsClamp = (f: number) => Math.max(CUSTOM_FPS[0], Math.min(CUSTOM_FPS[1], Math.round(f * 1000) / 1000));
 
 function loadPrefs(): ExportPrefs {
   const p = { ...DEFAULT_PREFS };
@@ -142,6 +139,8 @@ export class App {
   private seekTimer = 0;
   private playing = false;
   private exporting = false;
+  /** a custom field holds a value outside its range (while typing): show the range instead of the derived value */
+  private fieldHint = { w: false, fps: false };
   private downloadUrl: string | null = null;
   private aspect = 16 / 9;
   private errorDetails: ErrorDetails | null = null;
@@ -825,12 +824,18 @@ export class App {
     seg('seg-timing', 'timing', v => { this.prefs.timing = v as ExportPrefs['timing']; changed(); });
     seg('seg-quality', 'q', v => { this.prefs.quality = v as QualityPreset; changed(); });
     seg('seg-codec', 'c', v => { this.prefs.codec = v as OutCodec; changed(); });
+    // custom number fields: an in-range value applies as it is typed; a commit (Enter / leaving the field) clamps
+    // whatever was typed to the range (9000 px -> 7680, 300 fps -> 240) and clears the error state
     const cw = $('in-custom-w') as HTMLInputElement;
     const readW = (commit: boolean) => {
-      const w = +cw.value;
-      const ok = Number.isFinite(w) && w >= CUSTOM_W[0] && w <= CUSTOM_W[1];
-      cw.classList.toggle('is-bad', !ok && cw.value !== '');
-      if (ok || commit) { this.prefs.customW = evenClamp(ok ? w : this.prefs.customW); if (commit) cw.value = String(this.prefs.customW); changed(); }
+      const r = readNumberField(cw.value, CUSTOM_W, this.prefs.customW, evenClamp);
+      const next = commit ? r.commit : r.live;
+      this.fieldHint.w = !commit && r.hint;
+      cw.classList.toggle('is-bad', !commit && r.bad);
+      cw.setAttribute('aria-invalid', String(!commit && r.bad));
+      if (commit) cw.value = String(r.commit);
+      if (next !== null && next !== this.prefs.customW) { this.prefs.customW = next; changed(); }
+      else this.renderExportOptions();
     };
     cw.addEventListener('input', () => readW(false));
     cw.addEventListener('change', () => readW(true));
@@ -842,10 +847,14 @@ export class App {
     });
     const cf = $('in-custom-fps') as HTMLInputElement;
     const readF = (commit: boolean) => {
-      const f = +cf.value;
-      const ok = Number.isFinite(f) && f >= CUSTOM_FPS[0] && f <= CUSTOM_FPS[1];
-      cf.classList.toggle('is-bad', !ok && cf.value !== '');
-      if (ok || commit) { this.prefs.customFps = fpsClamp(ok ? f : this.prefs.customFps); if (commit) cf.value = String(this.prefs.customFps); changed(); }
+      const r = readNumberField(cf.value, CUSTOM_FPS, this.prefs.customFps, fpsClamp);
+      const next = commit ? r.commit : r.live;
+      this.fieldHint.fps = !commit && r.hint;
+      cf.classList.toggle('is-bad', !commit && r.bad);
+      cf.setAttribute('aria-invalid', String(!commit && r.bad));
+      if (commit) cf.value = String(r.commit);
+      if (next !== null && next !== this.prefs.customFps) { this.prefs.customFps = next; changed(); }
+      else this.renderExportOptions();
     };
     cf.addEventListener('input', () => readF(false));
     cf.addEventListener('change', () => readF(true));
@@ -892,17 +901,17 @@ export class App {
     try { return normalizeFps(f); } catch { return 0; }
   }
 
-  /** playback speed of the export (output rate / source rate in slow motion, else 1); `asSlowmo` = what the Slow motion
-   *  option would give at the current frame rate */
-  private speed(asSlowmo = false): number {
-    const src = this.srcFps(), out = this.outFps();
-    if ((!asSlowmo && this.prefs.timing !== 'slowmo') || this.fpsChoice() === 'source' || !src || !out) return 1;
-    return Math.abs(out / src - 1) < 1e-4 ? 1 : out / src;
+  /** the timing the export uses at the current rate (slow motion only below the source rate) and its speed */
+  private timing(): TimingState {
+    return exportTiming(this.srcFps(), this.outFps(), this.fpsChoice(), this.prefs.timing);
   }
+
+  /** playback speed of the export (output rate / source rate in slow motion, else 1) */
+  private speed(): number { return this.timing().speed; }
 
   /** why motion blur can't be used with the current settings (null = it can) */
   private blurBlocker(): string | null {
-    if (this.prefs.timing === 'slowmo') return 'Slow motion shows every frame — nothing to blend';
+    if (this.timing().timing === 'slowmo') return 'Slow motion shows every frame — nothing to blend';
     const src = this.srcFps(), out = this.outFps();
     // the gyro shutter blurs any rate below the source's (a 180° window of 0.5/out s, traced along the camera path)
     if (this.fpsChoice() === 'source' || (src && out >= src * 0.999)) return 'Needs a lower frame rate than the source';
@@ -984,7 +993,7 @@ export class App {
     const c = this.clip;
     const n = c ? c.outP - c.inP + 1 : 0, secs = this.rangeSeconds(), fps = this.outFps();
     if (this.fpsChoice() === 'source' || !fps) return { frames: n, seconds: secs };
-    if (this.prefs.timing === 'slowmo') return { frames: n, seconds: n / fps };
+    if (this.timing().timing === 'slowmo') return { frames: n, seconds: n / fps };
     return { frames: Math.max(1, Math.round(secs * fps)), seconds: secs };
   }
 
@@ -999,7 +1008,8 @@ export class App {
     const p = this.prefs, c = this.clip;
     this.setSeg('seg-size', 'size', p.size);
     this.setSeg('seg-aspect', 'aspect', p.aspect);
-    this.setSeg('seg-timing', 'timing', p.timing);
+    const ts = this.timing();
+    this.setSeg('seg-timing', 'timing', ts.timing);
     this.setSeg('seg-quality', 'q', p.quality);
     const d = this.srcDims();
     if (d) {
@@ -1011,7 +1021,8 @@ export class App {
     const geo = this.outGeo();
     $('out-dims').textContent = geo ? `${geo.outW} × ${geo.outH}` : '';
     $('row-custom-w').hidden = p.size !== 'custom';
-    $('custom-h').textContent = geo && p.size === 'custom' ? `× ${geo.outH}` : '';
+    $('custom-h').textContent = this.fieldHint.w ? `${CUSTOM_W[0]}–${CUSTOM_W[1]} px` : geo && p.size === 'custom' ? `× ${geo.outH}` : '';
+    $('custom-h').classList.toggle('is-hint', this.fieldHint.w);
     const note = $('note-size');
     note.hidden = !geo?.upscale;
     if (geo?.upscale) note.textContent = `Larger than the footage resolves at ${this.aspectText()} (${Math.round(((geo.scale ?? 1) - 1) * 100)}% upscale) — expect a softer picture.`;
@@ -1026,14 +1037,19 @@ export class App {
     const src = this.srcFps();
     (sel.options[0] as HTMLOptionElement).textContent = src ? `Source · ${fmtFps(src)}` : 'Source';
     $('wrap-custom-fps').hidden = p.fps !== 'custom';
-    const out = this.outFps(), sp = this.speed(true);
+    const out = this.outFps();
     let fpsNote = '';
     if (p.fps === 'custom' && out) fpsNote = `${fmtFps(out)} fps`;
-    if (p.timing === 'realtime' && src && out > src * 1.01) fpsNote = 'above the source rate: frames repeat';
+    if (src && out > src * (1 + SAME_RATE_TOL)) fpsNote = 'above the source rate: frames repeat';
+    if (p.fps === 'custom' && this.fieldHint.fps) fpsNote = `${CUSTOM_FPS[0]}–${CUSTOM_FPS[1]} fps`;
     $('fps-note').textContent = fpsNote;
     $('timing-rt').textContent = c?.audio ? 'keeps sound' : 'same length';
-    $('timing-sm').textContent = this.fpsChoice() === 'source' || !src || !out ? 'every frame'
-      : sp === 1 ? 'same speed' : sp < 1 ? `${fmtFps(Math.round((1 / sp) * 100) / 100)}× slower` : `${fmtFps(Math.round(sp * 100) / 100)}× faster`;
+    // slow motion = every source frame at a LOWER rate: not offered at / above the source rate (it would only drop the
+    // sound, or play faster)
+    const smBtn = document.querySelector<HTMLButtonElement>('#seg-timing button[data-timing="slowmo"]')!;
+    smBtn.disabled = !ts.slowmoOk || this.exporting;
+    smBtn.title = ts.slowmoOk ? '' : `Slow motion plays every frame at a frame rate below the source’s${src ? ` (${fmtFps(src)} fps)` : ''} — pick a lower rate`;
+    $('timing-sm').textContent = slowmoLabel(ts, fmtFps);
     const blur = $('in-blur') as HTMLInputElement;
     const why = this.blurBlocker();
     blur.checked = this.blurActive();
@@ -1074,7 +1090,7 @@ export class App {
     const rows: Array<[string, string]> = [];
     const geo = this.outGeo(), out = this.outFps(), sp = this.speed();
     if (geo) {
-      const how = this.fpsChoice() === 'source' ? '' : this.prefs.timing === 'slowmo'
+      const how = this.fpsChoice() === 'source' ? '' : this.timing().timing === 'slowmo'
         ? (sp === 1 ? '' : ` · ${sp < 1 ? 'slow motion' : 'sped up'}`)
         : this.blurActive() ? ' · motion blur' : '';
       rows.push(['Output', `${geo.outW}×${geo.outH} · ${out ? fmtFps(out) : '…'} fps${how}`]);
@@ -1220,7 +1236,7 @@ export class App {
     $('viewer').classList.remove('no-split');
     const settings: import('../io/protocol').ExportSettings = {
       bitrate: this.bitrate(), prefer: this.prefs.codec, first: c.inP, last: c.outP, includeAudio: true, sink,
-      output: { size: this.sizeChoice(), aspect: this.prefs.aspect, fps: this.fpsChoice(), timing: this.prefs.timing, motionBlur: this.blurActive() },
+      output: { size: this.sizeChoice(), aspect: this.prefs.aspect, fps: this.fpsChoice(), timing: this.timing().timing, motionBlur: this.blurActive() },
     };
     this.debug.exportSettings = { ...settings, sink: { kind: sink.kind, name: sink.name } };
     this.log(`export settings ${JSON.stringify(settings.output)} ${Math.round(settings.bitrate / 1e6)} Mb/s ${settings.prefer}`);
@@ -1249,7 +1265,8 @@ export class App {
     this.lockControls(false);
     this.updateExportButton();
     $('done-title').textContent = r.name;
-    $('done-sub').textContent = `${r.width}×${r.height} · ${fmtFps(r.outFps)} fps · ${fmtDuration(r.durationS)} of video in ${fmtDuration(r.seconds)} · ${fmtBytes(r.bytes)}${r.audioDropped ? ' · no sound (slow motion)' : ''}`;
+    const sound = doneAudioNote(r);
+    $('done-sub').textContent = `${r.width}×${r.height} · ${fmtFps(r.outFps)} fps · ${fmtDuration(r.durationS)} of video in ${fmtDuration(r.seconds)} · ${fmtBytes(r.bytes)}${sound ? ' · ' + sound : ''}`;
     const dl = $('btn-download') as HTMLAnchorElement;
     dl.hidden = true;
     try {

@@ -15,7 +15,7 @@
  * the speed changes. Output track timescale: a multiple of the output rate (e.g. 24000 for 23.976, 25000 for 25).
  */
 import type { Mp4Info, Mp4Track, OutputSchedule, Plan } from '../types';
-import type { Warper } from '../gpu/warp';
+import { colorClassOf, type Warper } from '../gpu/warp';
 import { RetimeRenderer, type RetimeStats } from '../gpu/retime_render';
 import { ShutterRenderer, type ShutterStats } from '../gpu/shutter_render';
 import type { BlendTransfer } from '../gpu/blend';
@@ -58,7 +58,9 @@ export interface RenderResult {
   timeMode: 'identity' | 'realtime' | 'slowmo';
   /** source frames decoded */
   sourceFrames: number;
-  /** audio requested but not written (slow motion) */
+  /** the source has sound (an audio track with samples) — false: a silent clip, nothing to keep or drop */
+  sourceAudio: boolean;
+  /** the source's sound was requested but not written because the playback speed changes (slow motion) */
   audioDropped: boolean;
   /** single-pass or supersampled (anti-aliased downscale) warp */
   warpMode: 'direct' | 'supersample';
@@ -67,6 +69,9 @@ export interface RenderResult {
   renderer: 'frames' | 'shutter';
   retime: RetimeStats | ShutterStats;
   warnings: string[];
+  /** decoded source frames per colour class ('<pixel format>|<transfer tag>', warp.ts colorClassOf): the browser's
+   *  import conversion follows each frame's own tag, and one decoder does not always tag every frame alike */
+  colorTags: Record<string, number>;
   /** where the render loop spent its time (ms): waiting for decoded frames, for encoder/muxer room, in warp() */
   timing: { waitDecode: number; waitEncode: number; warp: number; encodeCall: number; flush: number; finalize: number };
 }
@@ -179,7 +184,8 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
   const durationS = total ? (() => { const [a, d] = outTimeOf(total - 1); return a + d; })() : 0;
 
   // audio passthrough (AAC only) — not for slow motion / speed changes
-  const audioDropped = job.includeAudio && !!sched.dropAudio;
+  const sourceAudio = info.tracks.some(t => t.kind === 'audio' && t.sampleCount > 0);
+  const audioDropped = job.includeAudio && sourceAudio && !!sched.dropAudio;
   const aTrack = job.includeAudio && !sched.dropAudio ? info.tracks.find(t => t.kind === 'audio' && (t.codec === 'aac' || t.fourcc === 'mp4a') && t.sampleCount > 0) : undefined;
   let audio: AudioPassthrough | undefined;
   let aFirst = 0, aLast = -1;
@@ -252,6 +258,7 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
   report('starting');
 
   const tm = { waitDecode: 0, waitEncode: 0, warp: 0, encodeCall: 0, flush: 0, finalize: 0 };
+  const colorTags: Record<string, number> = {};
   const waitEncoder = async () => {
     while (!encError && !writer.error && (encoder.encodeQueueSize > 8 || writer.pending > 16)) {
       if (signal.aborted) return;
@@ -276,6 +283,8 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
       const { frame: f, pres } = got;
       if (pres < job.first || pres > job.last) { f.close(); continue; }
       srcDone++;
+      const tag = colorClassOf(f);
+      colorTags[tag] = (colorTags[tag] ?? 0) + 1;
       tA = performance.now();
       await waitEncoder();
       tm.waitEncode += performance.now() - tA;
@@ -324,10 +333,11 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
     return {
       frames: done, seconds, fps: done / seconds, bytes: job.sink.bytesWritten(), codec: job.encoder.config.codec,
       audioPackets: writer.audioPackets, blob, sinkKind: job.sink.kind, name: job.sink.name, planMisses,
-      width: warper.width, height: warper.height, outFps, durationS, timeMode, sourceFrames: srcDone, audioDropped,
+      width: warper.width, height: warper.height, outFps, durationS, timeMode, sourceFrames: srcDone, sourceAudio, audioDropped,
       warpMode: warper.scaling.mode, renderer: rr instanceof ShutterRenderer ? 'shutter' : 'frames', retime: { ...rr.stats },
       // (the schedule's "no blur at this rate" note does not apply to the gyro shutter)
       warnings: (sched.warnings ?? []).filter(w => !(rr instanceof ShutterRenderer && /^motion blur/.test(w))),
+      colorTags,
       timing: Object.fromEntries(Object.entries(tm).map(([k, v]) => [k, Math.round(v)])) as RenderResult['timing'],
     };
   } catch (e) {

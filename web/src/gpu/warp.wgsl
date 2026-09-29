@@ -21,7 +21,9 @@
 //             T_src Cb,Cr are constant inside every aligned 2x2 block (variance ~1e-16 vs >= 1e-9 otherwise);
 //     Q-test: frames Chrome converts to RGBA8 before import (10-bit P010 on macOS, CPU-memory frames) are exact
 //             multiples of 1/255 under the right T_src.
-//   T_src = winner of the tests accumulated over frames (default: platform guess). Chroma MODE is decided per frame:
+//   T_src = winner of the tests accumulated over the frames of one COLOUR CLASS (pixel format + transfer tag: the
+//   browser's conversion follows each frame's own tag; warp.ts keeps one ColorState per class, default = what the tag
+//   implies, else the platform guess). Chroma MODE is decided per frame:
 //     planar (this frame's V-test is decisive): chroma plane = one CbCr per 2x2 block (exact source chroma), sampled
 //       at left-sited positions (chroma (i,j) at luma (2i, 2j+0.5), DJI/MPEG) exactly like warp.metal sp_warp_chroma;
 //     rgb (otherwise): the browser already upsampled chroma; CbCr is sampled per pixel position from a full-res plane.

@@ -228,6 +228,24 @@ describe.each(sources)('buildSchedule on %s', (_label, mk) => {
     expect(s.warnings!.join(' ')).toMatch(/motion blur/);
   });
 
+  it('slowmo at (nearly) the source rate is real time: 60 from 59.94 keeps the sound, no speed change', () => {
+    for (const fps of [60, 59.94, 59.8]) {
+      const s = buildSchedule(pts, { fps, timing: 'slowmo', motionBlur: 'off' });
+      const r = buildSchedule(pts, { fps, timing: 'realtime', motionBlur: 'off' });
+      validate(s, N);
+      expect(s.dropAudio).toBe(false);
+      expect(s.speed).toBe(1);
+      expect(s.warnings!.join(' ')).not.toMatch(/faster|slow motion/);
+      expect(s.n).toBe(r.n);
+      expect(Array.from(s.taps)).toEqual(Array.from(r.taps));
+    }
+    // clearly lower / higher rates stay slow motion / fast motion (speed change, sound dropped)
+    expect(buildSchedule(pts, { fps: 59, timing: 'slowmo', motionBlur: 'off' })).toMatchObject({ dropAudio: true, n: N });
+    const fast = buildSchedule(pts, { fps: 120, timing: 'slowmo', motionBlur: 'off' });
+    expect(fast.dropAudio).toBe(true);
+    expect(fast.speed).toBeCloseTo(120 / NTSC60, 12);
+  });
+
   it('sourceLastUse: skipped frames are marked unused, release order follows the output', () => {
     const s = buildSchedule(pts, { fps: 24, timing: 'realtime', motionBlur: 'off' });
     const lu = sourceLastUse(s, N);

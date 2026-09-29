@@ -30,6 +30,14 @@
  * Retimed exports: warp(frame, k, {timestamp, duration}) stamps the output; warpTo() + Blender (blend.ts) make
  * motion-blurred frames; retime_render.ts drives both from an OutputSchedule.
  *
+ * Colour classes. What Chrome does to an imported frame follows THAT frame's colorSpace tag, and one decoder does not tag
+ * all its frames alike: VideoToolbox (Chrome, macOS) hands out most frames of a BT.709 clip as 'bt709' (converted with
+ * Apple's gamma 1.961) but, in retimed exports, a few as 'iec61966-2-1' (sRGB: no transfer change) with the same
+ * pixel data. So the transfer calibration is kept per class of frames — pixel format + transfer tag — each with its
+ * own GPU evidence and a default derived from the tag ('iec61966-2-1' -> sRGB, 'linear' -> linear, else the
+ * platform guess), and every frame is converted with its own class's transfer. One calibration for all frames
+ * applied the 1.961 inverse to the sRGB-tagged frames: ~9 luma codes darker midtones = flicker (test/export.flicker.mjs).
+ *
  * Colour contract (measured in Chrome 153 / macOS, test/gpu.harness.ts 'extfit' + 'enccolor' + 'golden'):
  *   the canvas holds R'G'B' = source Y'CbCr through the source matrix (no transfer change), and VideoEncoder converts
  *   a canvas frame with the BT.709 matrix to limited range, so a BT.709 source round-trips to the same Y'CbCr codes
@@ -168,8 +176,10 @@ export interface ColorInfo {
   /** chroma mode of the last frame: 'planar420' = imported as 4:2:0 planes (exact source chroma, left-sited);
    *  'rgb' = the browser converted it to RGB first (e.g. 10-bit HEVC or CPU-memory frames on macOS) */
   mode: 'planar420' | 'rgb' | 'none';
+  /** transfer calibration of the last frame's colour class (see `classes` for all of them) */
   transfer: TransferName;
   how: 'default' | 'V-test' | 'Q-test' | 'forced';
+  /** frames of the last frame's class */
   frames: number;
   matrix: string;
   accV: number[];
@@ -178,7 +188,30 @@ export interface ColorInfo {
   /** true when the warp writes straight into the canvas texture (else: intermediate + copy) */
   directCanvas: boolean;
   canvasFormat: GPUTextureFormat;
+  /** colour class of the last frame ('<pixel format>|<transfer tag>') and every class seen since the last resetColor() */
+  colorClass: string;
+  classes: { key: string; frames: number; transfer: TransferName; how: ColorInfo['how'] }[];
 }
+
+/** Colour class of a frame: frames of one class get the same import conversion from the browser (it follows the
+ *  frame's own pixel format and transfer tag), so they share one transfer calibration. */
+export function colorClassOf(frame: { format?: string | null; colorSpace?: { transfer?: string | null } | null }): string {
+  return `${frame.format ?? '-'}|${frame.colorSpace?.transfer ?? '-'}`;
+}
+
+/** Default T_src (index into TRANSFERS) of a colour class until its own blind tests are decisive: the transfer the
+ *  browser applies on import for that tag ('iec61966-2-1' = sRGB = no change; 'linear'; bt709 / smpte170m / untagged:
+ *  Apple's gamma 1.961 on macOS VideoToolbox frames, sRGB elsewhere = the platform guess). */
+export function defaultTransferFor(transferTag: string | null | undefined, mac: boolean): number {
+  switch (transferTag) {
+    case 'iec61966-2-1': return TRANSFERS.indexOf('srgb');
+    case 'linear': return TRANSFERS.indexOf('linear');
+    default: return mac ? TRANSFERS.indexOf('gamma1.961') : TRANSFERS.indexOf('srgb');
+  }
+}
+
+/** Calibration state of one colour class (GPU ColorState + the defaults the CPU knows). */
+interface ColorClass { key: string; tag: string | null; buf: GPUBuffer; def: number; frames: number }
 
 const KERNEL_TAPS: Record<WarpKernel, number> = { lanczos3: 6, catmullrom: 4, bilinear: 2 };
 const HOW = ['default', 'V-test', 'Q-test', 'forced'] as const;
@@ -316,7 +349,9 @@ function releaseInter(device: GPUDevice, it: Inter) {
 interface SSState {
   iW: number; iH: number; sx: number; sy: number; nTaps: number;
   Y: GPUTexture; C: GPUTexture; hY: GPUTexture; hC: GPUTexture; table: GPUBuffer;
-  bgWarp: GPUBindGroup; bgH: GPUBindGroup; hYv: GPUTextureView; hCv: GPUTextureView;
+  /** warp_ss bind group per colour class (it reads that class's chroma mode) */
+  bgWarp: Map<ColorClass, GPUBindGroup>; bgH: GPUBindGroup; hYv: GPUTextureView; hCv: GPUTextureView;
+  Yv: GPUTextureView; Cv: GPUTextureView;
 }
 
 export class Warper {
@@ -330,10 +365,12 @@ export class Warper {
   private readonly directCanvas: boolean;
   private readonly outFormat: 'rgba8unorm' | 'bgra8unorm';
   private readonly forceTransfer: number;
-  private readonly defTransfer: number;
+  private readonly mac: boolean;
   private readonly params: GPUBuffer;
   private readonly rows: GPUBuffer;
-  private readonly cstate: GPUBuffer;
+  /** colour classes seen (see colorClassOf) and the class of the frame being / last converted */
+  private readonly classes = new Map<string, ColorClass>();
+  private cls: ColorClass;
   private readonly partials: GPUBuffer;
   private readonly dummyBuf: GPUBuffer;
   private readonly sampler: GPUSampler;
@@ -368,11 +405,11 @@ export class Warper {
     this.forceTransfer = t === 'auto' ? -1 : TRANSFERS.indexOf(t);
     this.forceMode = opts.chroma === 'planar' ? 1 : opts.chroma === 'rgb' ? 2 : 0;
     // Chrome on macOS tags VideoToolbox frames with Apple's BT.709 gamma (1.961); elsewhere BT.709 ~ sRGB (no-op).
-    this.defTransfer = typeof navigator !== 'undefined' && /Mac OS X|Macintosh/.test(navigator.userAgent) ? 1 : 0;
+    this.mac = typeof navigator !== 'undefined' && /Mac OS X|Macintosh/.test(navigator.userAgent);
     const U = GPUBufferUsage;
     this.params = device.createBuffer({ label: 'sp.params', size: PARAM_BYTES, usage: U.UNIFORM | U.COPY_DST });
     this.rows = device.createBuffer({ label: 'sp.rows', size: Math.max(16, plan.nRows * 36), usage: U.STORAGE | U.COPY_DST });
-    this.cstate = device.createBuffer({ label: 'sp.cstate', size: CSTATE_BYTES, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST });
+    this.cls = this.colorClass('-|-', null);
     this.partials = device.createBuffer({ label: 'sp.partials', size: CALIB_X * CALIB_Y * 12 * 4, usage: U.STORAGE });
     this.dummyBuf = device.createBuffer({ label: 'sp.dummy', size: 16, usage: U.STORAGE });
     this.sampler = device.createSampler({ magFilter: 'nearest', minFilter: 'nearest', addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' });
@@ -440,9 +477,12 @@ export class Warper {
     if (this.scalingInfo.mode === 'direct') this.destroySS();
   }
 
-  /** Forget the accumulated colour-transfer evidence (e.g. a different decoder / clip). */
+  /** Forget the accumulated colour-transfer evidence of every colour class (e.g. a different decoder / clip). */
   resetColor(): void {
-    this.device.queue.writeBuffer(this.cstate, 0, new Uint32Array(CSTATE_BYTES / 4));
+    for (const c of this.classes.values()) {
+      this.device.queue.writeBuffer(c.buf, 0, new Uint32Array(CSTATE_BYTES / 4));
+      c.frames = 0;
+    }
   }
 
   /** Warp decoded frame `frame` with plan record k. Returns a new VideoFrame (caller closes both) with the source's
@@ -519,22 +559,35 @@ export class Warper {
     } finally { out.destroy(); }
   }
 
-  /** What the colour calibration concluded so far (async readback of the GPU state). */
+  /** What the colour calibration concluded so far (async readback of the GPU state): the last frame's colour class,
+   *  plus a summary of every class. */
   async colorInfo(): Promise<ColorInfo> {
-    const buf = (await this.readBuffer(this.cstate, CSTATE_BYTES)).buffer as ArrayBuffer;
-    const f = new Float32Array(buf), u = new Uint32Array(buf);
+    const read = async (c: ColorClass) => {
+      const buf = (await this.readBuffer(c.buf, CSTATE_BYTES)).buffer as ArrayBuffer;
+      return { f: new Float32Array(buf), u: new Uint32Array(buf) };
+    };
+    const classes: ColorInfo['classes'] = [];
+    for (const c of this.classes.values()) {
+      if (!c.frames) continue;
+      const { u } = await read(c);
+      classes.push({ key: c.key, frames: u[16], transfer: TRANSFERS[u[17]] ?? 'srgb', how: HOW[u[18]] ?? 'default' });
+    }
+    const { f, u } = await read(this.cls);
     return {
       mode: this.frames === 0 ? 'none' : u[19] === 1 ? 'planar420' : 'rgb',
       transfer: TRANSFERS[u[17]] ?? 'srgb', how: HOW[u[18]] ?? 'default', frames: u[16], matrix: this.matrix,
       accV: Array.from(f.subarray(0, TRANSFERS.length)), accQ: Array.from(f.subarray(8, 8 + TRANSFERS.length)),
       warnings: [...this.warnings], directCanvas: this.directCanvas, canvasFormat: this.outFormat,
+      colorClass: this.cls.key, classes,
     };
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    for (const b of [this.params, this.rows, this.cstate, this.partials, this.dummyBuf, this.qbuf]) b?.destroy();
+    for (const b of [this.params, this.rows, this.partials, this.dummyBuf, this.qbuf]) b?.destroy();
+    for (const c of this.classes.values()) c.buf.destroy();
+    this.classes.clear();
     this.qset?.destroy();
     for (const t of [this.outTex, this.dummyOut]) t?.destroy();
     this.destroySS();
@@ -544,6 +597,19 @@ export class Warper {
   }
 
   // ------------------------------------------------------------------------------------------ internals
+  /** The calibration state of colour class `key` (created on first use, zeroed = no evidence yet). */
+  private colorClass(key: string, tag: string | null): ColorClass {
+    let c = this.classes.get(key);
+    if (!c) {
+      const buf = this.device.createBuffer({ label: `sp.cstate ${key}`, size: CSTATE_BYTES,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
+      this.device.queue.writeBuffer(buf, 0, new Uint32Array(CSTATE_BYTES / 4));
+      c = { key, tag, buf, def: defaultTransferFor(tag, this.mac), frames: 0 };
+      this.classes.set(key, c);
+    }
+    return c;
+  }
+
   private async readBuffer(src: GPUBuffer, n: number): Promise<Float32Array> {
     const rb = this.device.createBuffer({ size: n, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     try {
@@ -581,18 +647,7 @@ export class Warper {
     const table = this.device.createBuffer({ label: 'sp.ss.taps', size: tab.data.byteLength,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(table, 0, tab.data);
-    const v = this.views, P = this.pipes;
-    const bgWarp = this.device.createBindGroup({ layout: P.bglSS, entries: [
-      { binding: 0, resource: { buffer: this.params } },
-      { binding: 7, resource: { buffer: this.rows } },
-      { binding: 8, resource: v.Y },
-      { binding: 9, resource: v.CH },
-      { binding: 10, resource: v.CF },
-      { binding: 12, resource: { buffer: this.cstate } },
-      { binding: 14, resource: this.sampler },
-      { binding: 21, resource: Y.createView() },
-      { binding: 22, resource: C.createView() },
-    ] });
+    const P = this.pipes;
     const bgH = this.device.createBindGroup({ layout: P.bglDH, entries: [
       { binding: 0, resource: { buffer: this.params } },
       { binding: 23, resource: { buffer: table } },
@@ -601,9 +656,30 @@ export class Warper {
       { binding: 17, resource: hY.createView() },
       { binding: 18, resource: hC.createView() },
     ] });
-    this.ss = { iW, iH, sx: sc.sx, sy: sc.sy, nTaps: tab.nTaps, Y, C, hY, hC, table, bgWarp, bgH,
-      hYv: hY.createView(), hCv: hC.createView() };
+    this.ss = { iW, iH, sx: sc.sx, sy: sc.sy, nTaps: tab.nTaps, Y, C, hY, hC, table, bgWarp: new Map(), bgH,
+      hYv: hY.createView(), hCv: hC.createView(), Yv: Y.createView(), Cv: C.createView() };
     return this.ss;
+  }
+
+  /** warp_ss bind group for colour class c (cached per class). */
+  private ssWarpGroup(ss: SSState, c: ColorClass): GPUBindGroup {
+    let bg = ss.bgWarp.get(c);
+    if (!bg) {
+      const v = this.views;
+      bg = this.device.createBindGroup({ layout: this.pipes.bglSS, entries: [
+        { binding: 0, resource: { buffer: this.params } },
+        { binding: 7, resource: { buffer: this.rows } },
+        { binding: 8, resource: v.Y },
+        { binding: 9, resource: v.CH },
+        { binding: 10, resource: v.CF },
+        { binding: 12, resource: { buffer: c.buf } },
+        { binding: 14, resource: this.sampler },
+        { binding: 21, resource: ss.Yv },
+        { binding: 22, resource: ss.Cv },
+      ] });
+      ss.bgWarp.set(c, bg);
+    }
+    return bg;
   }
 
   private writeParams(k: number, o: { dstW: number; dstH: number; outSx: number; outSy: number; dbg: number; nTaps?: number; outFx?: number }) {
@@ -615,7 +691,7 @@ export class Warper {
     f[8] = L.k[0]; f[9] = L.k[1]; f[10] = L.k[2]; f[11] = L.k[3];
     f[12] = p.srcW; f[13] = p.srcH; u[14] = p.nRows; u[15] = this.iters;
     f[16] = o.outSx; f[17] = o.outSy; u[18] = o.dstW; u[19] = o.dstH;
-    f[20] = kr; f[21] = kb; u[22] = this.defTransfer; i[23] = this.forceTransfer;
+    f[20] = kr; f[21] = kb; u[22] = this.cls.def; i[23] = this.forceTransfer;
     u[24] = CALIB_X; u[25] = CALIB_Y; u[26] = this.forceMode; u[27] = o.dbg;
     u[28] = p.outW; u[29] = p.outH; u[30] = o.nTaps ?? 0; u[31] = 0;
     this.device.queue.writeBuffer(this.params, 0, this.paramData);
@@ -638,7 +714,7 @@ export class Warper {
       { binding: 9, resource: v.CH },
       { binding: 10, resource: v.CF },
       { binding: 11, resource: { buffer: dbg ?? this.dummyBuf } },
-      { binding: 12, resource: { buffer: this.cstate } },
+      { binding: 12, resource: { buffer: this.cls.buf } },
       { binding: 13, resource: out.createView() },
       { binding: 14, resource: this.sampler },
     ];
@@ -656,9 +732,11 @@ export class Warper {
     this.matrix = cs?.matrix ?? 'bt709';
     const tr = (cs?.transfer ?? '') as string;
     if (tr === 'pq' || tr === 'hlg') this.warnings.add(`HDR transfer '${tr}' is tone-mapped by the browser; colours are not preserved`);
+    // this frame's colour class: its own transfer calibration (the browser's conversion follows the frame's own tag)
+    this.cls = this.colorClass(colorClassOf(frame), cs?.transfer ?? null);
     // sub-frame re-warp of the frame the shared intermediates already hold: no second conversion / calibration
     const reuse = !!ov && this.inter.last?.frame === frame && this.inter.last.warper === this;
-    if (!reuse) this.frames++;
+    if (!reuse) { this.frames++; this.cls.frames++; }
     const sc = this.scalingInfo;
     const ss = sc.mode === 'supersample' ? this.ssState() : null;
     if (ss) this.writeParams(k, { dstW: ss.iW, dstH: ss.iH, outSx: sc.sx, outSy: sc.sy, dbg: lumaOut ? 1 : 0, nTaps: ss.nTaps, outFx: ov?.outFx });
@@ -668,7 +746,7 @@ export class Warper {
     const cbg = reuse ? null : this.device.createBindGroup({ layout: P.bglConvert, entries: [
       { binding: 0, resource: { buffer: this.params } },
       { binding: 1, resource: this.device.importExternalTexture({ source: frame, colorSpace: 'srgb' }) },
-      { binding: 2, resource: { buffer: this.cstate } },
+      { binding: 2, resource: { buffer: this.cls.buf } },
       { binding: 3, resource: { buffer: this.partials } },
       { binding: 4, resource: this.views.Y },
       { binding: 5, resource: this.views.CH },
@@ -713,7 +791,7 @@ export class Warper {
         { binding: 19, resource: ss.hYv },
         { binding: 20, resource: ss.hCv },
       ] });
-      wp.setBindGroup(0, ss.bgWarp);
+      wp.setBindGroup(0, this.ssWarpGroup(ss, this.cls));
       wp.setPipeline(P.warpSS);
       wp.dispatchWorkgroups(Math.ceil(ss.iW / 16), Math.ceil(ss.iH / 16));
       wp.setBindGroup(0, ss.bgH);

@@ -149,3 +149,64 @@ describe('export output timing', () => {
     }
   });
 });
+
+describe('export options: custom fields', () => {
+  it('in-range values apply while typing; a commit clamps what was typed and clears the error', async () => {
+    const { readNumberField, evenClamp, fpsClamp, CUSTOM_W, CUSTOM_FPS } = await import('../src/ui/exportopts');
+    const W = (raw: string, last = 1600) => readNumberField(raw, CUSTOM_W, last, evenClamp);
+    const F = (raw: string, last = 48) => readNumberField(raw, CUSTOM_FPS, last, fpsClamp);
+    expect(W('1920')).toEqual({ live: 1920, commit: 1920, bad: false, hint: false });
+    expect(W('1921').commit).toBe(1922);                       // even widths only
+    // typing 9000: 9 / 90 are unfinished (not errors, nothing applied), 900 applies, 9000 is out of range
+    expect(W('9')).toEqual({ live: null, commit: 160, bad: false, hint: true });
+    expect(W('900').live).toBe(900);
+    expect(W('9000', 900)).toEqual({ live: null, commit: 7680, bad: true, hint: true });   // not the typed-on-the-way 900
+    expect(W('50')).toMatchObject({ live: null, commit: 160, bad: false });
+    expect(W('', 1234)).toEqual({ live: null, commit: 1234, bad: false, hint: false });   // emptied: keep the value
+    expect(F('300', 30)).toEqual({ live: null, commit: 240, bad: true, hint: true });      // not the 30 typed on the way
+    expect(F('0.5')).toMatchObject({ live: null, commit: 1, bad: false, hint: true });
+    expect(F('23.9761').live).toBe(23.976);
+    expect(F('240').live).toBe(240);
+    // committed values are valid, so reading them back shows no error
+    for (const raw of ['9000', '50', '12345', '-3']) expect(W(String(W(raw).commit)).bad).toBe(false);
+    for (const raw of ['300', '0', '0.25']) expect(F(String(F(raw).commit))).toMatchObject({ bad: false, hint: false });
+  });
+});
+
+describe('export options: timing', () => {
+  const NTSC60 = 60000 / 1001;
+  it('slow motion only below the source rate; near-equal rates are real time', async () => {
+    const { exportTiming, slowmoLabel } = await import('../src/ui/exportopts');
+    const { fmtFps } = await import('../src/ui/format');
+    // 60 from 59.94: 0.1 % apart -> a real-time conform (sound kept), Slow motion not offered
+    const t60 = exportTiming(NTSC60, 60, 60, 'slowmo');
+    expect(t60).toMatchObject({ timing: 'realtime', slowmoOk: false, speed: 1, sameRate: true });
+    expect(slowmoLabel(t60, fmtFps)).toBe('needs a lower rate');
+    expect(exportTiming(NTSC60, NTSC60, 59.94, 'slowmo')).toMatchObject({ timing: 'realtime', slowmoOk: false });
+    expect(exportTiming(NTSC60, NTSC60, 'source', 'slowmo')).toMatchObject({ timing: 'realtime', slowmoOk: false });
+    expect(exportTiming(NTSC60, 59.8, 59.8, 'slowmo')).toMatchObject({ timing: 'realtime', slowmoOk: false, sameRate: true });
+    // above the source rate: it would play faster, not slower
+    expect(exportTiming(30, 60, 60, 'slowmo')).toMatchObject({ timing: 'realtime', slowmoOk: false, speed: 1, sameRate: false });
+    // really lower: slow motion
+    const t24 = exportTiming(NTSC60, 24, 24, 'slowmo');
+    expect(t24.timing).toBe('slowmo');
+    expect(t24.speed).toBeCloseTo(24 / NTSC60, 12);
+    expect(slowmoLabel(t24, fmtFps)).toBe('2.5× slower');
+    expect(exportTiming(NTSC60, 59, 59, 'slowmo')).toMatchObject({ timing: 'slowmo', slowmoOk: true });
+    // real time stays real time; the Slow motion label still shows what it would do
+    const r24 = exportTiming(NTSC60, 24, 24, 'realtime');
+    expect(r24).toMatchObject({ timing: 'realtime', slowmoOk: true, speed: 1 });
+    expect(slowmoLabel(r24, fmtFps)).toBe('2.5× slower');
+    // unknown rates (clip not open yet): nothing offered
+    expect(exportTiming(0, 24, 24, 'slowmo')).toMatchObject({ timing: 'realtime', slowmoOk: false });
+  });
+
+  it('the done card tells a silent clip from sound dropped for slow motion', async () => {
+    const { doneAudioNote } = await import('../src/ui/exportopts');
+    expect(doneAudioNote({ sourceAudio: false, audioDropped: false, audioPackets: 0, timeMode: 'slowmo' })).toBe('no sound in the source clip');
+    expect(doneAudioNote({ sourceAudio: false, audioDropped: false, audioPackets: 0, timeMode: 'realtime' })).toBe('no sound in the source clip');
+    expect(doneAudioNote({ sourceAudio: true, audioDropped: true, audioPackets: 0, timeMode: 'slowmo' })).toBe('no sound (slow motion)');
+    expect(doneAudioNote({ sourceAudio: true, audioDropped: false, audioPackets: 377, timeMode: 'realtime' })).toBe('');
+    expect(doneAudioNote({ sourceAudio: true, audioDropped: false, audioPackets: 0, timeMode: 'realtime' })).toBe('sound not copied');
+  });
+});

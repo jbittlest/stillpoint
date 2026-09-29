@@ -19,11 +19,16 @@
  *                                       overlap (box filter); taps under 0.5 % are dropped, weights renormalized.
  *                                       A window not longer than one source frame (d <= 1/srcFps, e.g. 59.94 ->
  *                                       29.97 at 180°) adds no blur: nearest frame (every other frame, exactly).
- *   slowmo     every source frame, played back at `fps`: outPts = i/fps, duration n/fps; audio dropped.
+ *   slowmo     every source frame, played back at `fps`: outPts = i/fps, duration n/fps; audio dropped. A rate within
+ *              SAME_RATE_TOL of the source's (60 from 59.94) is no slow motion: it is exported in real time (sound kept).
  *   fps 'source' (either mode) = identity: one tap per source frame at its own PTS.
  * NTSC-style rates snap to N·1000/1001 (59.94, 29.97, 23.976, 119.88, ...).
  */
 import type { OutputSchedule, RetimeParams } from './types';
+
+/** rates closer than this (relative) play at the same speed: 59.94 <-> 60 (0.1 %) is a real-time conform, not slow
+ *  motion (no sound dropped for it) */
+export const SAME_RATE_TOL = 0.005;
 
 /** taps whose normalized weight is below this are dropped (motion blur) */
 export const MIN_TAP_WEIGHT = 0.005;
@@ -196,17 +201,16 @@ export function buildSchedule(framePts: Float64Array | ArrayLike<number>, p: Ret
     return finish(N, outPts, fps, srcFps, singleTaps(idx), { speed: 1, dropAudio: false, warnings });
   }
 
-  // ---- slow motion: every source frame at the new rate
-  if (timing === 'slowmo') {
+  // ---- slow motion: every source frame at the new rate (a rate within SAME_RATE_TOL of the source's: real time)
+  if (timing === 'slowmo' && Math.abs(fps / srcFps - 1) >= SAME_RATE_TOL) {
     const speed = fps / srcFps;
-    const same = Math.abs(speed - 1) < 1e-4;
     if (blur) warnings.push('motion blur does not apply to slow motion (every source frame is shown): none applied');
-    if (!same) warnings.push(speed < 1
+    warnings.push(speed < 1
       ? `slow motion ${(1 / speed).toFixed(2)}x: audio dropped`
       : `plays ${speed.toFixed(2)}x faster than real time: audio dropped`);
     const idx = Int32Array.from({ length: N }, (_, i) => i);
     const outPts = Float64Array.from({ length: N }, (_, i) => Math.round(i / fps * 1e6));
-    return finish(N, outPts, fps, srcFps, singleTaps(idx), { speed, dropAudio: !same, warnings });
+    return finish(N, outPts, fps, srcFps, singleTaps(idx), { speed, dropAudio: true, warnings });
   }
 
   // ---- real time

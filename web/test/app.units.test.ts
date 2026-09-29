@@ -11,6 +11,7 @@ describe('format', () => {
   it('times', () => {
     expect(fmtTime(0)).toBe('0:00.0');
     expect(fmtTime(75.25)).toBe('1:15.3');
+    expect(fmtTime(59.97)).toBe('1:00.0');   // rounds into the next minute, never 0:60.0
     expect(fmtTime(399.5, false)).toBe('6:39');
     expect(fmtTime(3725, false)).toBe('1:02:05');
   });
@@ -46,10 +47,18 @@ describe('encoder codec strings', () => {
     expect(av1CodecString(3840, 2160, 59.94)).toBe('av01.0.13H.08');
     expect(av1CodecString(3840, 2880, 59.94)).toBe('av01.0.16H.08');
   });
-  it('bitrate presets scale with pixel rate', () => {
+  it('bitrate presets scale with pixels x fps (sub-linearly) and codec', () => {
     const p = bitratePresets(3840, 2160, 59.94);
-    expect(p).toEqual({ balanced: 60e6, high: 100e6, max: 150e6 });
-    expect(bitratePresets(3840, 2880, 59.94).high).toBe(133e6);
+    expect(p).toEqual({ small: 60e6, high: 100e6, max: 150e6 });
+    expect(bitratePresets(3840, 2880, 59.94).high).toBe(126e6);
+    const hd30 = bitratePresets(1920, 1080, 30);
+    expect(hd30.high).toBe(21e6);
+    expect(bitratePresets(1920, 1080, 30, 'avc').high).toBe(29e6);
+    expect(bitratePresets(1920, 1080, 30, 'av1').high).toBe(17e6);
+    // monotone in size and rate, and never below 2 Mb/s
+    expect(bitratePresets(1280, 720, 30).high).toBeLessThan(hd30.high);
+    expect(bitratePresets(1920, 1080, 60).high).toBeGreaterThan(hd30.high);
+    expect(bitratePresets(64, 64, 1).small).toBe(2e6);
   });
 });
 
@@ -120,5 +129,23 @@ describe('planIndexer', () => {
     expect(k(0.151)).toBe(2);
     expect(k(-1)).toBe(0);
     expect(k(9)).toBe(3);
+  });
+});
+
+describe('export output timing', () => {
+  it('track timescale is a multiple of the output rate', async () => {
+    const { timescaleFor } = await import('../src/io/pipeline');
+    expect(timescaleFor(24000 / 1001)).toBe(24000);
+    expect(timescaleFor(30000 / 1001)).toBe(30000);
+    expect(timescaleFor(60000 / 1001)).toBe(60000);
+    expect(timescaleFor(24)).toBe(24000);
+    expect(timescaleFor(25)).toBe(25000);
+    expect(timescaleFor(50)).toBe(50000);
+    for (const f of [12.5, 48, 47.952, 17.3]) {
+      const ts = timescaleFor(f);
+      // one frame is (close to) a whole number of ticks
+      expect(Math.abs(ts / f - Math.round(ts / f))).toBeLessThan(0.02);
+      expect(ts).toBeGreaterThanOrEqual(1000);
+    }
   });
 });

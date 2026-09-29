@@ -103,23 +103,66 @@ export async function chooseEncoder(r: EncoderRequest): Promise<EncoderChoice | 
   if (typeof VideoEncoder === 'undefined') return null;
   const order: OutCodec[] = ['hevc', 'avc', 'av1', 'vp9'];
   if (r.prefer) order.sort((a, b) => (a === r.prefer ? -1 : b === r.prefer ? 1 : 0));
+  const attempts: Array<[OutCodec, EncoderChoice['hardware']]> = [];
+  // AV1 / VP9 are (almost always) software encoders: when one is asked for explicitly, honour it before falling back
+  // to another codec's hardware encoder
+  if (r.prefer === 'av1' || r.prefer === 'vp9') attempts.push([r.prefer, 'prefer-hardware'], [r.prefer, 'no-preference']);
   // hardware first across all codecs, then anything
   for (const hw of ['prefer-hardware', 'no-preference'] as const) {
     for (const codec of order) {
       if (hw === 'no-preference' && (codec === 'av1' || codec === 'vp9') && r.allowSoftware === false) continue;
-      const config = configFor(codec, r, hw);
-      try {
-        const s = await VideoEncoder.isConfigSupported(config);
-        if (s.supported) return { codec, config: s.config ?? config, label: CODEC_LABEL[codec], hardware: hw };
-      } catch { /* try the next one */ }
+      if (!attempts.some(([c, h]) => c === codec && h === hw)) attempts.push([codec, hw]);
     }
+  }
+  for (const [codec, hw] of attempts) {
+    const config = configFor(codec, r, hw);
+    try {
+      const s = await VideoEncoder.isConfigSupported(config);
+      if (s.supported) return { codec, config: s.config ?? config, label: CODEC_LABEL[codec], hardware: hw };
+    } catch { /* try the next one */ }
   }
   return null;
 }
 
-/** Suggested bitrates (bits/s) for the Quality control, scaled from a 3840x2160 reference by pixel rate. */
-export function bitratePresets(w: number, h: number, fps: number): Record<'balanced' | 'high' | 'max', number> {
-  const scale = Math.max(0.15, (w * h * fps) / (3840 * 2160 * 59.94));
-  const r = (mbps: number) => Math.round(mbps * scale) * 1e6;
-  return { balanced: r(60), high: r(100), max: r(150) };
+/** Which output codecs this browser can encode at a given size / rate (for the codec picker). */
+export interface CodecOption {
+  codec: OutCodec;
+  label: string;
+  /** a hardware encoder accepts the config */
+  hardware: boolean;
+  /** any encoder (hardware or software) accepts it */
+  supported: boolean;
+}
+
+export async function codecOptions(r: Omit<EncoderRequest, 'prefer'>, codecs: OutCodec[] = ['hevc', 'avc', 'av1']): Promise<CodecOption[]> {
+  if (typeof VideoEncoder === 'undefined') return codecs.map(codec => ({ codec, label: CODEC_LABEL[codec], hardware: false, supported: false }));
+  const ok = async (codec: OutCodec, hw: EncoderChoice['hardware']) => {
+    try { return !!(await VideoEncoder.isConfigSupported(configFor(codec, r, hw))).supported; } catch { return false; }
+  };
+  return Promise.all(codecs.map(async codec => {
+    const hardware = await ok(codec, 'prefer-hardware');
+    const supported = hardware || await ok(codec, 'no-preference');
+    return { codec, label: CODEC_LABEL[codec], hardware, supported };
+  }));
+}
+
+export type QualityPreset = 'small' | 'high' | 'max';
+
+/** Reference bitrates (Mb/s) for HEVC at 3840x2160 59.94 fps. */
+const REF_MBPS: Record<QualityPreset, number> = { small: 60, high: 100, max: 150 };
+/** relative bits an encoder needs for the same quality (HEVC = 1) */
+const CODEC_FACTOR: Record<OutCodec, number> = { hevc: 1, avc: 1.4, av1: 0.8, vp9: 1.05 };
+
+/**
+ * Suggested bitrates (bits/s) for the quality presets. Scaled from the 4K 59.94 fps reference sub-linearly — bits per
+ * pixel have to rise as the picture gets smaller (every pixel carries more detail) and as the frame rate drops (less
+ * temporal redundancy): x (pixels / ref)^0.8 x (fps / 59.94)^0.65, x the codec's efficiency factor, rounded to Mb/s
+ * (>= 2 Mb/s). 3840x2160 59.94 HEVC stays 60 / 100 / 150 Mb/s.
+ */
+export function bitratePresets(w: number, h: number, fps: number, codec: OutCodec = 'hevc'): Record<QualityPreset, number> {
+  const px = Math.max(1, w * h) / (3840 * 2160);
+  const ft = Math.max(1, fps) / 59.94;
+  const scale = Math.pow(px, 0.8) * Math.pow(ft, 0.65) * CODEC_FACTOR[codec];
+  const r = (mbps: number) => Math.max(2, Math.round(mbps * scale)) * 1e6;
+  return { small: r(REF_MBPS.small), high: r(REF_MBPS.high), max: r(REF_MBPS.max) };
 }

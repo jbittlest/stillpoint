@@ -1,5 +1,7 @@
 export function fmtTime(s: number, tenths = true): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
+  // round first, so 59.97 s reads 1:00.0, not 0:60.0
+  s = tenths ? Math.round(s * 10) / 10 : Math.floor(s + 1e-6);
   const m = Math.floor(s / 60);
   const r = s - m * 60;
   const sec = tenths ? r.toFixed(1).padStart(4, '0') : String(Math.floor(r)).padStart(2, '0');

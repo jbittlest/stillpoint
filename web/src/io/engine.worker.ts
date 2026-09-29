@@ -14,15 +14,17 @@
  *    point) and otherwise fail with a precise message plus diagnostics the UI can copy.
  */
 import type { Mp4Info, Mp4Track, Plan } from '../types';
-import type { WarperLike } from '../ui/contracts';
 import { readRanges, readSamples } from '../mp4';
 import { Warper } from '../gpu/warp';
+import { blendTransferFor } from '../gpu/blend';
+import { outputGeometry, rescalePlan } from '../plan';
+import { buildSchedule } from '../retime';
 import {
   DecodeFailure, DecoderSession, FrameIndex, type FrameStream, cannotDecodeMessage, classifySyncSamples, colorSpaceOf,
   completeSamplePrefix, decodeLimits, decodeOne, describeStream, errText, isAbort, isApplePlatform, parseFault,
   softwareNote, streamFacts, supportedVariants, trimTrack,
 } from './decode';
-import { chooseEncoder, type EncoderChoice } from './encode';
+import { chooseEncoder, codecOptions, type EncoderChoice } from './encode';
 import { clearOpfsExports, createSink } from './mux';
 import { planIndexer, renderClip } from './pipeline';
 import type { DecoderInfo, EngineDebug, EngineIn, EngineOut, ErrorDetails, ExportSettings } from './protocol';
@@ -44,7 +46,7 @@ let index: FrameIndex | null = null;
 let session: DecoderSession | null = null;
 let plan: Plan | null = null;
 let planIdx: ((t: number) => number) | null = null;
-let warper: WarperLike | null = null;
+let warper: Warper | null = null;
 let warperPlanId = -1;
 
 /** the last source frame shown (kept to re-warp instantly when the plan changes; closed before a new decoder starts) */
@@ -59,7 +61,7 @@ let playGen = 0;
 let playCtl: AbortController | null = null;
 let exporting: AbortController | null = null;
 /** warpers replaced while an export was using them; destroyed when it ends */
-const retired: WarperLike[] = [];
+const retired: Warper[] = [];
 
 // ─────────── one decoder at a time ───────────
 
@@ -76,17 +78,21 @@ function acquireDecoder(): Promise<() => void> {
 
 // ─────────── drawing ───────────
 
-function drawContain(ctx: OffscreenCanvasRenderingContext2D, img: CanvasImageSource, iw: number, ih: number) {
+/** Draw `img` centred: 'contain' (letterboxed) or 'cover' (filling the canvas, centre-cropped). */
+function drawFit(ctx: OffscreenCanvasRenderingContext2D, img: CanvasImageSource, iw: number, ih: number, fit: 'contain' | 'cover' = 'contain') {
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, cw, ch);
-  const s = Math.min(cw / iw, ch / ih);
+  const s = fit === 'cover' ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
   const w = iw * s, h = ih * s;
   ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
 }
+const drawContain = (ctx: OffscreenCanvasRenderingContext2D, img: CanvasImageSource, iw: number, ih: number) => drawFit(ctx, img, iw, ih, 'contain');
 
 function drawPair(src: VideoFrame | null, warped: VideoFrame | null) {
-  if (bctx && src) drawContain(bctx, src, src.displayWidth, src.displayHeight);
+  // the viewer takes the OUTPUT's aspect: when that is not the source's (e.g. a 9:16 export of 16:9 footage) the
+  // original fills the frame centre-cropped, so both sides of the split show the same framing
+  if (bctx && src) drawFit(bctx, src, src.displayWidth, src.displayHeight, 'cover');
   if (actx) {
     if (warped) drawContain(actx, warped, warped.displayWidth, warped.displayHeight);
     else if (src) drawContain(actx, src, src.displayWidth, src.displayHeight);
@@ -107,7 +113,7 @@ function releaseHeld() {
   lastWarped?.close(); lastWarped = null;
 }
 
-function warpFor(src: VideoFrame, pres: number, w: WarperLike | null = warper): VideoFrame | null {
+function warpFor(src: VideoFrame, pres: number, w: Warper | null = warper): VideoFrame | null {
   if (!w || !plan || !index || !planIdx) return null;
   return w.warp(src, planIdx(index.pts[pres]));
 }
@@ -117,19 +123,19 @@ function warpFor(src: VideoFrame, pres: number, w: WarperLike | null = warper): 
  * row matrices act on normalized rays and only outW/outH/outFx scale — so real-time preview doesn't warp 8-11 MP per
  * frame just to downscale it. Built lazily per plan and canvas size.
  */
-let pvWarper: WarperLike | null = null;
+let pvWarper: Warper | null = null;
 let pvKey = '';
-async function previewWarper(): Promise<WarperLike | null> {
+async function previewWarper(): Promise<Warper | null> {
   if (!plan || !device || !after) return warper;
   const s = Math.min(1, Math.max(after.width / plan.outW, after.height / plan.outH));
   if (s > 0.8) return warper;
   const outW = Math.max(2, Math.round((plan.outW * s) / 2) * 2), outH = Math.max(2, Math.round((plan.outH * s) / 2) * 2);
   const key = `${warperPlanId}:${outW}x${outH}`;
   if (pvWarper && key === pvKey) return pvWarper;
-  const k = outW / plan.outW;
-  const scaled: Plan = { ...plan, outW, outH, outFx: plan.outFx.map(f => f * k) };
   try {
-    const w = await Warper.create(device, scaled, { kernel: 'catmullrom' });
+    const scaled: Plan = rescalePlan(plan, outW, outH);
+    // single-pass (no supersampled downscale): real-time preview, the canvas scales it for display anyway
+    const w = await Warper.create(device, scaled, { kernel: 'catmullrom', antialias: 'off' });
     pvWarper?.destroy();
     pvWarper = w; pvKey = key;
     return w;
@@ -407,13 +413,14 @@ async function play(from: number, to: number, loop: boolean) {
 
 // ─────────── export ───────────
 
-async function encoderFor(bitrate: number, prefer?: ExportSettings['prefer']): Promise<EncoderChoice | null> {
-  if (!plan || !index) return null;
-  return chooseEncoder({ width: plan.outW, height: plan.outH, fps: 1 / index.frameDur, bitrate, prefer });
+async function probeEncoder(m: Extract<EngineIn, { type: 'probe-encoder' }>) {
+  const req = { width: m.width, height: m.height, fps: m.fps, bitrate: m.bitrate };
+  const [e, options] = await Promise.all([chooseEncoder({ ...req, prefer: m.prefer }), codecOptions(req)]);
+  post({ type: 'encoder', id: m.id, codec: e?.config.codec ?? null, label: e?.label ?? '', hardware: e?.hardware === 'prefer-hardware', width: m.width, height: m.height, fps: m.fps, options });
 }
 
 async function runExport(s: ExportSettings) {
-  if (!file || !info || !video || !index || !session || !plan || !warper) {
+  if (!file || !info || !video || !index || !session || !plan || !warper || !device) {
     post({ type: 'export-error', message: session ? 'Nothing to export yet — the camera path is still being planned.' : 'This clip couldn’t be opened for decoding, so it can’t be exported.', cancelled: false });
     return;
   }
@@ -424,21 +431,43 @@ async function runExport(s: ExportSettings) {
   const lastPres = heldPres;
   const release = await acquireDecoder();
   const sess = session;
+  const dev = device;
+  let own: Warper | null = null;
   try {
     // free the held preview frame before the export's decoder starts (the hardware decoder pool is small)
     releaseHeld();
     if (ctl.signal.aborted) throw new DOMException('Export cancelled', 'AbortError');
-    const enc = await encoderFor(s.bitrate, s.prefer);
-    if (!enc) throw new Error('This browser cannot encode video at ' + plan.outW + '×' + plan.outH + '.');
+    const o = s.output ?? { size: 'source', aspect: 'source', fps: 'source', timing: 'realtime', motionBlur: false };
+    // output size: the plan (built for this aspect) rescaled — same camera path, focal x outW / plan.outW
+    const base = plan, baseWarper = warper;
+    const geo = outputGeometry(base.srcW, base.srcH, o.size, o.aspect);
+    let expPlan: Plan = base, expWarper: Warper = baseWarper;
+    if (geo.outW !== base.outW || geo.outH !== base.outH) {
+      try { expPlan = rescalePlan(base, geo.outW, geo.outH); } catch {
+        throw new Error('The camera path is still being re-planned for this aspect ratio — try again in a moment.');
+      }
+      own = expWarper = await Warper.create(dev, expPlan, { kernel: 'lanczos3' });
+    }
+    const first = Math.max(0, s.first), last = Math.min(index.n - 1, s.last);
+    const identity = o.fps === 'source';
+    const schedule = buildSchedule(index.pts.subarray(first, last + 1), {
+      fps: o.fps, timing: o.timing, motionBlur: o.motionBlur && o.timing === 'realtime' ? 'natural' : 'off', shutterDeg: 180,
+    });
+    const outFps = schedule.fps ?? 1 / index.frameDur;
+    const enc = await chooseEncoder({ width: geo.outW, height: geo.outH, fps: outFps, bitrate: s.bitrate, prefer: s.prefer });
+    if (!enc) throw new Error(`This browser cannot encode video at ${geo.outW}×${geo.outH} ${outFps.toFixed(2)} fps.`);
     if (s.sink.kind !== 'fsa') await clearOpfsExports();
     const sink = await createSink(s.sink);
     const cs = colorSpaceOf(video);
     const sdr709 = !cs || ((cs.primaries ?? 'bt709') === 'bt709' && (cs.transfer ?? 'bt709') === 'bt709');
     const result = await renderClip({
-      file, info, video, index, plan, warper, readSamples, encoder: enc, sink,
+      file, info, video, index, plan: expPlan, warper: expWarper, schedule, identity, readSamples, encoder: enc, sink,
       frames: (a, b) => sess.frames(a, b, { purpose: 'export', signal: ctl.signal, gaps: 'fail', ...sess.opts.limits.export }),
-      first: Math.max(0, s.first), last: Math.min(index.n - 1, s.last), includeAudio: s.includeAudio, signal: ctl.signal,
+      first, last, includeAudio: s.includeAudio, signal: ctl.signal,
       colorSpace: sdr709 ? { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', fullRange: false } : undefined,
+      blendTransfer: blendTransferFor(cs),
+      // natural motion blur: 180° synthetic shutter (gyro sub-frame warps between the blended frames)
+      shutterS: o.motionBlur && o.timing === 'realtime' && o.fps !== 'source' && debug.blur !== 'frames' ? 0.5 / outFps : undefined,
       onProgress: p => post({ type: 'export-progress', p }),
       onPreview: (src, w, pres) => { drawPair(src, w); post({ type: 'frame', pres, t: index!.pts[pres], hasWarp: true, ms: 0 }); },
       previewEveryMs: 200,
@@ -454,6 +483,7 @@ async function runExport(s: ExportSettings) {
       details: cancelled ? undefined : detailsOf(e, 'export'),
     });
   } finally {
+    own?.destroy();
     release();
     exporting = null;
     for (const w of retired.splice(0)) if (w !== warper) w.destroy();
@@ -483,8 +513,7 @@ scope.onmessage = (ev: MessageEvent<EngineIn>) => {
     case 'play': void play(m.from, m.to, m.loop); break;
     case 'pause': stopPlayback(); break;
     case 'probe-encoder':
-      // serialized behind 'plan' so the encoder is probed for the plan's output size
-      serial(() => encoderFor(m.bitrate, m.prefer).then(e => post({ type: 'encoder', codec: e?.config.codec ?? null, label: e?.label ?? '', hardware: e?.hardware === 'prefer-hardware', width: plan?.outW ?? 0, height: plan?.outH ?? 0, fps: index ? 1 / index.frameDur : 0 })));
+      serial(() => probeEncoder(m));
       break;
     case 'export': void runExport(m.settings); break;
     case 'cancel': exporting?.abort(); break;

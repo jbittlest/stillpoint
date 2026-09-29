@@ -5,7 +5,8 @@
  *   ?fixture=<url prefix without extension>   e.g. /test/fixtures/path/o3_0034 or /__clips/oa4_0012_full
  */
 import type { Telemetry } from '../src/types';
-import { buildPlan, cameraRowMats, orientationSeries, planFootprint, useExposureAvg } from '../src/plan';
+import { buildPlan, cameraRowMats, mapPlanPoint, orientationSeries, outputGeometry, planFootprint, useExposureAvg } from '../src/plan';
+import { buildSchedule } from '../src/retime';
 import { checkCrop, optimizePath, pathJitterPx, type PathProblem } from '../src/smooth';
 
 async function load(prefix: string) {
@@ -70,6 +71,24 @@ async function main() {
     const v = checkCrop(P, res.virtQ, res.outFx, 32, 0);
     out.maxViolPx = v.reduce((m, x) => Math.max(m, x), -Infinity);
     out.pythonOptimizeS = meta.python.optimize_s;
+    // 3) output targeting (1080p 9:16) + a 24 fps motion-blur schedule, in the browser runtime
+    t = performance.now();
+    const vert = buildPlan(tel, { smoothness: 1, output: outputGeometry(tel.width, tel.height, '1080p', '9:16') });
+    out.vertical = { ms: performance.now() - t, outW: vert.outW, outH: vert.outH, hfovDeg: vert.hfovDeg,
+      jitter: pathJitterPx(vert.virtQ, tel.fps, plan.fx0 * 1920 / plan.outW, 1.5, tel.segments).rms,
+      jitterSourceAspect: pathJitterPx(plan.virtQ, tel.fps, plan.fx0 * 1920 / plan.outW, 1.5, tel.segments).rms,
+      nFramesViolating: vert.smoothInfo.nFramesViolating, worstBorderPx: -Infinity as number };
+    const uv = new Float64Array(2);
+    for (let k = 0; k < F; k += 7) {
+      for (const [x, y] of [[0, 0], [vert.outW - 1, 0], [0, vert.outH - 1], [vert.outW - 1, vert.outH - 1],
+        [vert.outW / 2, 0], [vert.outW / 2, vert.outH - 1], [0, vert.outH / 2], [vert.outW - 1, vert.outH / 2]]) {
+        mapPlanPoint(vert, k, x, y, uv);
+        out.vertical.worstBorderPx = Math.max(out.vertical.worstBorderPx, -uv[0], uv[0] - (tel.width - 1), -uv[1], uv[1] - (tel.height - 1));
+      }
+    }
+    t = performance.now();
+    const sch = buildSchedule(tel.framePts, { fps: 24, timing: 'realtime', motionBlur: 'natural' });
+    out.schedule24 = { ms: performance.now() - t, n: sch.n, maxTaps: sch.maxTaps, maxSpan: sch.maxSpan };
     out.ok = true;
   } catch (e: any) {
     out.ok = false;

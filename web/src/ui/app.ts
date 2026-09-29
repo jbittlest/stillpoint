@@ -2,19 +2,68 @@
  * Stillpoint web UI controller (main thread). Owns no heavy work: the analysis worker parses the file and builds the
  * camera plan; the engine worker owns the GPU, the preview canvases and the export pipeline.
  */
-import type { Mp4Info, Mp4Track, Plan } from '../types';
+import type { AspectChoice, Mp4Info, Mp4Track, OutputGeometry, Plan, SizeChoice } from '../types';
 import type { StabParams } from './contracts';
 import type { AnalysisIn, AnalysisOut, DecoderInfo, EngineDebug, EngineIn, EngineOut, ErrorDetails, PlanSummary, TelemetrySummary } from '../io/protocol';
 import type { RenderProgress, RenderResult } from '../io/pipeline';
 import type { SinkKind } from '../io/mux';
 import { getOpfsExport } from '../io/mux';
-import { bitratePresets } from '../io/encode';
+import { bitratePresets, CODEC_LABEL, type CodecOption, type OutCodec, type QualityPreset } from '../io/encode';
+import { outputGeometry } from '../plan';
+import { normalizeFps } from '../retime';
 import { detectCaps, verdict, type Caps } from './caps';
 import { aspectLabel, fmtBytes, fmtDuration, fmtEta, fmtFps, fmtRate, fmtShutter, fmtTime } from './format';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
-type Quality = 'balanced' | 'high' | 'max';
+type SizeKey = 'source' | '2.7k' | '1440p' | '1080p' | '720p' | 'custom';
+type FpsKey = 'source' | '60' | '59.94' | '50' | '30' | '29.97' | '25' | '24' | '23.976' | 'custom';
+
+/** The export choices, remembered between visits (localStorage; every access guarded). */
+interface ExportPrefs {
+  size: SizeKey;
+  customW: number;
+  aspect: AspectChoice;
+  fps: FpsKey;
+  customFps: number;
+  timing: 'realtime' | 'slowmo';
+  blur: boolean;
+  quality: QualityPreset;
+  codec: OutCodec;
+}
+const PREFS_KEY = 'stillpoint.export.v1';
+const DEFAULT_PREFS: ExportPrefs = { size: 'source', customW: 1600, aspect: 'source', fps: 'source', customFps: 48, timing: 'realtime', blur: false, quality: 'high', codec: 'hevc' };
+const SIZE_KEYS: SizeKey[] = ['source', '2.7k', '1440p', '1080p', '720p', 'custom'];
+const ASPECT_KEYS: AspectChoice[] = ['source', '16:9', '4:3', '1:1', '9:16'];
+const FPS_KEYS: FpsKey[] = ['source', '60', '59.94', '50', '30', '29.97', '25', '24', '23.976', 'custom'];
+const CUSTOM_W = [160, 7680] as const;
+const CUSTOM_FPS = [1, 240] as const;
+const evenClamp = (w: number) => Math.max(CUSTOM_W[0], Math.min(CUSTOM_W[1], 2 * Math.round(w / 2)));
+const fpsClamp = (f: number) => Math.max(CUSTOM_FPS[0], Math.min(CUSTOM_FPS[1], Math.round(f * 1000) / 1000));
+
+function loadPrefs(): ExportPrefs {
+  const p = { ...DEFAULT_PREFS };
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return p;
+    const q = JSON.parse(raw) as Partial<ExportPrefs>;
+    if (SIZE_KEYS.includes(q.size as SizeKey)) p.size = q.size!;
+    if (Number.isFinite(q.customW)) p.customW = evenClamp(q.customW!);
+    if (ASPECT_KEYS.includes(q.aspect as AspectChoice)) p.aspect = q.aspect!;
+    if (FPS_KEYS.includes(q.fps as FpsKey)) p.fps = q.fps!;
+    if (Number.isFinite(q.customFps)) p.customFps = fpsClamp(q.customFps!);
+    if (q.timing === 'realtime' || q.timing === 'slowmo') p.timing = q.timing;
+    if (typeof q.blur === 'boolean') p.blur = q.blur;
+    if (q.quality === 'small' || q.quality === 'high' || q.quality === 'max') p.quality = q.quality;
+    if (q.codec === 'hevc' || q.codec === 'avc' || q.codec === 'av1') p.codec = q.codec;
+  } catch { /* storage blocked or corrupt: defaults */ }
+  return p;
+}
+function savePrefs(p: ExportPrefs) {
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* storage blocked: not remembered */ }
+}
+const evenFloor = (x: number) => Math.max(2, 2 * Math.floor(x / 2));
+const ASPECT_NAME: Record<AspectChoice, string> = { source: 'source', '16:9': '16:9', '4:3': '4:3', '1:1': '1:1', '9:16': '9:16' };
 
 interface ClipState {
   file: File;
@@ -30,7 +79,9 @@ interface ClipState {
   plan?: PlanSummary;
   planId: number;
   appliedPlanId: number;
-  encoder?: { codec: string | null; label: string; hardware: boolean; width: number; height: number; fps: number };
+  encoder?: { codec: string | null; label: string; hardware: boolean; width: number; height: number; fps: number; options?: CodecOption[] };
+  /** reference output size ('WxH') the latest plan request was built for (changes with the aspect only) */
+  planKey?: string;
   inP: number;
   outP: number;
   pres: number;
@@ -64,6 +115,10 @@ export interface DebugHook {
   /** the last diagnostics text built by "Copy details" */
   lastDiagnostics?: string;
   playing?: boolean;
+  /** what the export panel would produce right now */
+  exportPlan?: { width?: number; height?: number; fps: number; frames: number; seconds: number; bitrate: number; audio: boolean; blur: boolean };
+  /** the settings of the last export started */
+  exportSettings?: import('../io/protocol').ExportSettings;
 }
 
 export class App {
@@ -77,8 +132,9 @@ export class App {
   /** clip generation (bumped per opened file) */
   private gen = 0;
   private planSeq = 0;
-  private quality: Quality = 'high';
-  private codec: 'hevc' | 'avc' = 'hevc';
+  private prefs: ExportPrefs = loadPrefs();
+  private probeSeq = 0;
+  private probeTimer = 0;
   private params: StabParams = { smoothness: 1, footprint: 0.6, horizonLock: false };
   private planTimer = 0;
   private seekBusy = false;
@@ -143,6 +199,7 @@ export class App {
     const debug: EngineDebug = {};
     if (q.get('sp_fault')) debug.fault = q.get('sp_fault')!;
     if (q.get('sp_stall')) debug.stallMs = Math.max(500, +q.get('sp_stall')! || 0);
+    if (q.get('sp_blur') === 'frames' || q.get('sp_blur') === 'shutter') debug.blur = q.get('sp_blur') as 'frames' | 'shutter';
     this.postEngine({ type: 'init', before, after, debug }, [before, after]);
   }
 
@@ -174,6 +231,7 @@ export class App {
         this.debug.clip = { ...this.debug.clip!, telemetry: m.summary };
         this.renderBadge();
         this.renderFacts();
+        this.renderExportOptions();
         if (!c.decodeError) this.requestPlan(true);
         break;
       case 'plan': {
@@ -184,9 +242,9 @@ export class App {
         this.setAspect(m.summary.outW / m.summary.outH);
         const p: Plan = m.plan;
         this.postEngine({ type: 'plan', plan: p, id: m.id }, [p.rowMats.buffer as ArrayBuffer]);
-        this.setPlanState(`${m.summary.outW}×${m.summary.outH} · ≈${Math.round(m.summary.hfovDeg)}° wide`, false);
-        this.renderExportFacts();
-        this.postEngine({ type: 'probe-encoder', bitrate: this.bitrate(), prefer: this.codec });
+        this.setPlanState(`≈${Math.round(m.summary.hfovDeg)}° wide${this.prefs.aspect !== 'source' ? ` · ${this.prefs.aspect}` : ''}`, false);
+        this.renderExportOptions();
+        this.probeEncoder(true);
         break;
       }
       case 'error':
@@ -234,6 +292,8 @@ export class App {
         ($('btn-play') as HTMLButtonElement).disabled = false;
         this.renderTimeline();
         this.renderFacts();
+        this.renderExportOptions();
+        this.probeEncoder();
         break;
       }
       case 'decoder': {
@@ -279,12 +339,15 @@ export class App {
         if (m.id > c.planId) return;
         c.appliedPlanId = Math.max(c.appliedPlanId, m.id);
         if (m.id === c.planId) { this.debug.planReady = true; this.status(null); $('viewer').classList.remove('no-split'); }
-        this.updateExportButton();
+        this.renderExportOptions();
         break;
       }
       case 'encoder': {
         const c = this.clip; if (!c) return;
+        if (m.id !== this.probeSeq) return; // an older probe (settings changed since)
         c.encoder = m;
+        this.log(`encoder ${m.width}x${m.height}@${m.fps.toFixed(3)} -> ${m.codec ?? 'none'} (${m.options.filter(o => o.supported).map(o => o.codec + (o.hardware ? '/hw' : '/sw')).join(',')})`);
+        this.renderExportOptions();
         this.debug.clip = { ...this.debug.clip!, encoder: m };
         this.renderExportFacts();
         this.updateExportButton();
@@ -395,6 +458,7 @@ export class App {
     this.setPlanState('', false);
     this.renderBadge();
     this.showCard('export');
+    this.renderExportOptions();
     this.updateExportButton();
     this.setView('work');
     this.status('Opening…', 0);
@@ -409,9 +473,13 @@ export class App {
     const go = () => {
       c.planId = ++this.planSeq; // globally increasing, so a stale reply from an older clip can never match
       this.debug.planReady = false;
-      this.setPlanState('Planning…', true);
+      const output = this.planOutput();
+      const replan = !!c.planKey && c.planKey !== this.planKeyOf(output);
+      c.planKey = this.planKeyOf(output);
+      this.setPlanState(replan ? `Re-planning for ${this.aspectText()}…` : 'Planning…', true);
       this.updateExportButton();
-      this.postAnalysis({ type: 'plan', gen: this.gen, id: c.planId, params: { ...this.params } });
+      this.renderExportOptions();
+      this.postAnalysis({ type: 'plan', gen: this.gen, id: c.planId, params: { ...this.params, ...(output ? { output } : {}) } });
     };
     if (immediate) go(); else this.planTimer = window.setTimeout(go, 220);
   }
@@ -500,24 +568,7 @@ export class App {
     for (const el of [smooth, fov]) el.addEventListener('input', () => { sync(); this.requestPlan(); });
     hz.addEventListener('change', () => { sync(); this.requestPlan(true); });
 
-    // format
-    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#seg-codec button'))) {
-      b.addEventListener('click', () => {
-        this.codec = b.dataset.c as 'hevc' | 'avc';
-        for (const o of Array.from(document.querySelectorAll('#seg-codec button'))) o.setAttribute('aria-checked', String(o === b));
-        this.renderExportFacts();
-        if (this.clip?.plan) this.postEngine({ type: 'probe-encoder', bitrate: this.bitrate(), prefer: this.codec });
-      });
-    }
-    // quality
-    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#seg-quality button'))) {
-      b.addEventListener('click', () => {
-        this.quality = b.dataset.q as Quality;
-        for (const o of Array.from(document.querySelectorAll('#seg-quality button'))) o.setAttribute('aria-checked', String(o === b));
-        this.renderExportFacts();
-        if (this.clip?.plan) this.postEngine({ type: 'probe-encoder', bitrate: this.bitrate(), prefer: this.codec });
-      });
-    }
+    this.bindExportOptions();
 
     $('btn-export').addEventListener('click', () => void this.startExport());
     $('btn-cancel').addEventListener('click', () => this.postEngine({ type: 'cancel' }));
@@ -538,6 +589,7 @@ export class App {
     if (!Number.isFinite(a) || a <= 0 || Math.abs(a - this.aspect) < 1e-3) return;
     this.aspect = a;
     $('viewer').style.setProperty('--ar', String(a));
+    $('viewer').classList.toggle('is-tall', a < 0.9);
     this.resizeCanvases();
   }
 
@@ -750,18 +802,175 @@ export class App {
     $('clip-summary').textContent = t ? t.camera : '';
   }
 
-  private bitrate(): number {
-    const c = this.clip;
-    const w = c?.plan?.outW ?? 3840, h = c?.plan?.outH ?? 2160, fps = c?.fps || 59.94;
-    return this.presets(w, h, fps)[this.quality];
+  // ───────────────────────── export options ─────────────────────────
+
+  private bindExportOptions() {
+    const seg = (id: string, attr: string, on: (v: string) => void) => {
+      for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>(`#${id} button`))) {
+        b.addEventListener('click', () => { if (!b.disabled) on(b.dataset[attr]!); });
+      }
+    };
+    const changed = (replan = false) => {
+      savePrefs(this.prefs);
+      if (replan) this.maybeReplan();
+      this.renderExportOptions();
+      this.probeEncoder();
+    };
+    seg('seg-size', 'size', v => {
+      this.prefs.size = v as SizeKey;
+      changed();
+      if (v === 'custom') requestAnimationFrame(() => ($('in-custom-w') as HTMLInputElement).focus());
+    });
+    seg('seg-aspect', 'aspect', v => { this.prefs.aspect = v as AspectChoice; changed(true); });
+    seg('seg-timing', 'timing', v => { this.prefs.timing = v as ExportPrefs['timing']; changed(); });
+    seg('seg-quality', 'q', v => { this.prefs.quality = v as QualityPreset; changed(); });
+    seg('seg-codec', 'c', v => { this.prefs.codec = v as OutCodec; changed(); });
+    const cw = $('in-custom-w') as HTMLInputElement;
+    const readW = (commit: boolean) => {
+      const w = +cw.value;
+      const ok = Number.isFinite(w) && w >= CUSTOM_W[0] && w <= CUSTOM_W[1];
+      cw.classList.toggle('is-bad', !ok && cw.value !== '');
+      if (ok || commit) { this.prefs.customW = evenClamp(ok ? w : this.prefs.customW); if (commit) cw.value = String(this.prefs.customW); changed(); }
+    };
+    cw.addEventListener('input', () => readW(false));
+    cw.addEventListener('change', () => readW(true));
+    const sel = $('sel-fps') as HTMLSelectElement;
+    sel.addEventListener('change', () => {
+      this.prefs.fps = sel.value as FpsKey;
+      changed();
+      if (sel.value === 'custom') requestAnimationFrame(() => ($('in-custom-fps') as HTMLInputElement).focus());
+    });
+    const cf = $('in-custom-fps') as HTMLInputElement;
+    const readF = (commit: boolean) => {
+      const f = +cf.value;
+      const ok = Number.isFinite(f) && f >= CUSTOM_FPS[0] && f <= CUSTOM_FPS[1];
+      cf.classList.toggle('is-bad', !ok && cf.value !== '');
+      if (ok || commit) { this.prefs.customFps = fpsClamp(ok ? f : this.prefs.customFps); if (commit) cf.value = String(this.prefs.customFps); changed(); }
+    };
+    cf.addEventListener('input', () => readF(false));
+    cf.addEventListener('change', () => readF(true));
+    const blur = $('in-blur') as HTMLInputElement;
+    blur.addEventListener('change', () => { this.prefs.blur = blur.checked; changed(); });
+    cw.value = String(this.prefs.customW);
+    cf.value = String(this.prefs.customFps);
+    this.renderExportOptions();
   }
 
-  /** H.264 needs ~40 % more bits than HEVC for the same quality */
+  /** source picture size (telemetry, else the track) */
+  private srcDims(): [number, number] | null {
+    const c = this.clip;
+    const w = c?.tel?.width || c?.video?.width, h = c?.tel?.height || c?.video?.height;
+    return w && h ? [w, h] : null;
+  }
+
+  private srcFps(): number {
+    const c = this.clip;
+    return c?.fps || c?.tel?.fps || 0;
+  }
+
+  private sizeChoice(): SizeChoice {
+    return this.prefs.size === 'custom' ? { width: this.prefs.customW } : this.prefs.size;
+  }
+
+  /** the export's output frame size (null before the clip's size is known) */
+  private outGeo(): OutputGeometry | null {
+    const d = this.srcDims();
+    if (!d) return null;
+    try { return outputGeometry(d[0], d[1], this.sizeChoice(), this.prefs.aspect); } catch { return null; }
+  }
+
+  private fpsChoice(): number | 'source' {
+    const f = this.prefs.fps;
+    if (f === 'source') return 'source';
+    return f === 'custom' ? this.prefs.customFps : +f;
+  }
+
+  /** output frame rate actually used (NTSC rates snap to N·1000/1001), 0 when unknown */
+  private outFps(): number {
+    const f = this.fpsChoice();
+    if (f === 'source') return this.srcFps();
+    try { return normalizeFps(f); } catch { return 0; }
+  }
+
+  /** playback speed of the export (output rate / source rate in slow motion, else 1); `asSlowmo` = what the Slow motion
+   *  option would give at the current frame rate */
+  private speed(asSlowmo = false): number {
+    const src = this.srcFps(), out = this.outFps();
+    if ((!asSlowmo && this.prefs.timing !== 'slowmo') || this.fpsChoice() === 'source' || !src || !out) return 1;
+    return Math.abs(out / src - 1) < 1e-4 ? 1 : out / src;
+  }
+
+  /** why motion blur can't be used with the current settings (null = it can) */
+  private blurBlocker(): string | null {
+    if (this.prefs.timing === 'slowmo') return 'Slow motion shows every frame — nothing to blend';
+    const src = this.srcFps(), out = this.outFps();
+    // the gyro shutter blurs any rate below the source's (a 180° window of 0.5/out s, traced along the camera path)
+    if (this.fpsChoice() === 'source' || (src && out >= src * 0.999)) return 'Needs a lower frame rate than the source';
+    return null;
+  }
+
+  private blurActive(): boolean { return this.prefs.blur && !this.blurBlocker(); }
+
+  /** geometry the camera path is solved for: the largest rectangle of the chosen aspect inside the source (undefined
+   *  = the source's own aspect: the default plan) */
+  private planOutput(): OutputGeometry | undefined {
+    const d = this.srcDims();
+    if (!d || this.prefs.aspect === 'source') return undefined;
+    const g = outputGeometry(d[0], d[1], 'source', this.prefs.aspect);
+    if (g.outW === evenFloor(d[0]) && g.outH === evenFloor(d[1])) return undefined;
+    return g;
+  }
+
+  private planKeyOf(g: OutputGeometry | undefined): string {
+    const d = this.srcDims();
+    return g ? `${g.outW}x${g.outH}` : d ? `${evenFloor(d[0])}x${evenFloor(d[1])}` : 'source';
+  }
+
+  private aspectText(): string {
+    const d = this.srcDims();
+    return this.prefs.aspect === 'source' ? (d ? aspectLabel(d[0], d[1]) : 'source') : ASPECT_NAME[this.prefs.aspect];
+  }
+
+  /** aspect changed: re-plan when the camera path's rectangle changes (sizes of one aspect share a path) */
+  private maybeReplan() {
+    const c = this.clip;
+    if (!c || !c.tel || c.decodeError || c.telError || c.tel.eisBaked) return;
+    if (c.planKey === this.planKeyOf(this.planOutput())) return;
+    this.requestPlan(true);
+  }
+
+  /** a plan request for the current aspect is on its way (its result has not been applied yet) */
+  private replanning(): boolean {
+    const c = this.clip;
+    return !!c && !!c.plan && c.appliedPlanId !== c.planId;
+  }
+
+  /** Probe the encoder (and which codecs work) for the current output size / rate; debounced. */
+  private probeEncoder(now = false) {
+    clearTimeout(this.probeTimer);
+    const go = () => {
+      const c = this.clip, g = this.outGeo(), fps = this.outFps();
+      if (!c || !g || !fps || c.decodeError) return;
+      this.postEngine({ type: 'probe-encoder', id: ++this.probeSeq, bitrate: this.bitrate(), prefer: this.prefs.codec, width: g.outW, height: g.outH, fps });
+    };
+    if (now) go(); else this.probeTimer = window.setTimeout(go, 150);
+  }
+
+  /** the codec the encoder will actually use (the probe's answer), else the preferred one */
+  private effectiveCodec(): OutCodec {
+    const e = this.clip?.encoder?.codec;
+    if (e) return /^(avc1|avc3)/.test(e) ? 'avc' : /^(hvc1|hev1)/.test(e) ? 'hevc' : /^av01/.test(e) ? 'av1' : /^vp09/.test(e) ? 'vp9' : this.prefs.codec;
+    return this.prefs.codec;
+  }
+
+  private bitrate(): number {
+    const g = this.outGeo();
+    return this.presets(g?.outW ?? 3840, g?.outH ?? 2160, this.outFps() || 59.94)[this.prefs.quality];
+  }
+
+  /** bitrate presets for the output size x rate, for the preferred codec (H.264 needs ~40 % more than HEVC) */
   private presets(w: number, h: number, fps: number) {
-    const p = bitratePresets(w, h, fps);
-    if (this.codec !== 'avc') return p;
-    const up = (b: number) => Math.round((b * 1.4) / 1e6) * 1e6;
-    return { balanced: up(p.balanced), high: up(p.high), max: up(p.max) };
+    return bitratePresets(w, h, fps, this.prefs.codec);
   }
 
   private rangeSeconds(): number {
@@ -770,26 +979,121 @@ export class App {
     return c.pts[c.outP] - c.pts[c.inP] + 1 / (c.fps || 30);
   }
 
+  /** output frames and playback length of the export */
+  private outLength(): { frames: number; seconds: number } {
+    const c = this.clip;
+    const n = c ? c.outP - c.inP + 1 : 0, secs = this.rangeSeconds(), fps = this.outFps();
+    if (this.fpsChoice() === 'source' || !fps) return { frames: n, seconds: secs };
+    if (this.prefs.timing === 'slowmo') return { frames: n, seconds: n / fps };
+    return { frames: Math.max(1, Math.round(secs * fps)), seconds: secs };
+  }
+
+  private audioKept(): boolean { return !!this.clip?.audio && this.speed() === 1; }
+
+  private setSeg(id: string, attr: string, value: string) {
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>(`#${id} button`))) b.setAttribute('aria-checked', String(b.dataset[attr] === value));
+  }
+
+  /** Sync every export control with the choices and the clip. */
+  private renderExportOptions() {
+    const p = this.prefs, c = this.clip;
+    this.setSeg('seg-size', 'size', p.size);
+    this.setSeg('seg-aspect', 'aspect', p.aspect);
+    this.setSeg('seg-timing', 'timing', p.timing);
+    this.setSeg('seg-quality', 'q', p.quality);
+    const d = this.srcDims();
+    if (d) {
+      const k = 15 / Math.max(d[0], d[1]);
+      const g = $('ar-source');
+      g.style.setProperty('--gw', `${(d[0] * k).toFixed(1)}px`);
+      g.style.setProperty('--gh', `${(d[1] * k).toFixed(1)}px`);
+    }
+    const geo = this.outGeo();
+    $('out-dims').textContent = geo ? `${geo.outW} × ${geo.outH}` : '';
+    $('row-custom-w').hidden = p.size !== 'custom';
+    $('custom-h').textContent = geo && p.size === 'custom' ? `× ${geo.outH}` : '';
+    const note = $('note-size');
+    note.hidden = !geo?.upscale;
+    if (geo?.upscale) note.textContent = `Larger than the footage resolves at ${this.aspectText()} (${Math.round(((geo.scale ?? 1) - 1) * 100)}% upscale) — expect a softer picture.`;
+    const asp = $('aspect-state');
+    const busy = this.replanning() && !!c && c.planKey !== undefined;
+    asp.textContent = busy ? 'Re-planning…' : p.aspect === 'source' && d ? aspectLabel(d[0], d[1]) : '';
+    asp.classList.toggle('is-busy', busy);
+
+    // frame rate + timing
+    const sel = $('sel-fps') as HTMLSelectElement;
+    sel.value = p.fps;
+    const src = this.srcFps();
+    (sel.options[0] as HTMLOptionElement).textContent = src ? `Source · ${fmtFps(src)}` : 'Source';
+    $('wrap-custom-fps').hidden = p.fps !== 'custom';
+    const out = this.outFps(), sp = this.speed(true);
+    let fpsNote = '';
+    if (p.fps === 'custom' && out) fpsNote = `${fmtFps(out)} fps`;
+    if (p.timing === 'realtime' && src && out > src * 1.01) fpsNote = 'above the source rate: frames repeat';
+    $('fps-note').textContent = fpsNote;
+    $('timing-rt').textContent = c?.audio ? 'keeps sound' : 'same length';
+    $('timing-sm').textContent = this.fpsChoice() === 'source' || !src || !out ? 'every frame'
+      : sp === 1 ? 'same speed' : sp < 1 ? `${fmtFps(Math.round((1 / sp) * 100) / 100)}× slower` : `${fmtFps(Math.round(sp * 100) / 100)}× faster`;
+    const blur = $('in-blur') as HTMLInputElement;
+    const why = this.blurBlocker();
+    blur.checked = this.blurActive();
+    blur.disabled = !!why || this.exporting;
+    $('row-blur').classList.toggle('is-disabled', !!why);
+    $('blur-sub').textContent = why ?? '180° shutter, traced along the gyro path';
+
+    // quality
+    const pr = this.presets(geo?.outW ?? 3840, geo?.outH ?? 2160, out || 59.94);
+    $('q-small').textContent = `${Math.round(pr.small / 1e6)} Mb/s`;
+    $('q-high').textContent = `${Math.round(pr.high / 1e6)} Mb/s`;
+    $('q-max').textContent = `${Math.round(pr.max / 1e6)} Mb/s`;
+
+    // codecs: offer only what this browser can encode at this size / rate (all until the first probe answers)
+    const opts = c?.encoder?.options;
+    const segC = $('seg-codec');
+    let shown = 0;
+    for (const b of Array.from(segC.querySelectorAll<HTMLButtonElement>('button'))) {
+      const o = opts?.find(x => x.codec === b.dataset.c);
+      const vis = o ? o.supported : b.dataset.c !== 'av1';
+      b.hidden = !vis;
+      if (vis) shown++;
+      b.title = o ? `${CODEC_LABEL[o.codec]} · ${o.hardware ? 'hardware encoder' : 'software encoder (slower)'}` : '';
+    }
+    segC.classList.toggle('seg-2', shown === 2);
+    segC.classList.toggle('seg-1', shown === 1);
+    this.setSeg('seg-codec', 'c', opts && !opts.find(o => o.codec === p.codec)?.supported ? this.effectiveCodec() : p.codec);
+    const po = opts?.find(o => o.codec === p.codec);
+    $('codec-note').textContent = po && po.supported && !po.hardware ? 'software · slower' : '';
+
+    $('out-summary').textContent = geo && out ? `${geo.outW}×${geo.outH} · ${fmtFps(out)} fps` : '';
+    this.renderExportFacts();
+    this.updateExportButton();
+  }
+
   private renderExportFacts() {
     const c = this.clip; if (!c) return;
-    const presets = this.presets(c.plan?.outW ?? 3840, c.plan?.outH ?? 2160, c.fps || 59.94);
-    $('q-balanced').textContent = `${Math.round(presets.balanced / 1e6)} Mb/s`;
-    $('q-high').textContent = `${Math.round(presets.high / 1e6)} Mb/s`;
-    $('q-max').textContent = `${Math.round(presets.max / 1e6)} Mb/s`;
     const rows: Array<[string, string]> = [];
-    if (c.plan) rows.push(['Output', `${c.plan.outW}×${c.plan.outH} · ${fmtFps(c.fps)} fps`]);
+    const geo = this.outGeo(), out = this.outFps(), sp = this.speed();
+    if (geo) {
+      const how = this.fpsChoice() === 'source' ? '' : this.prefs.timing === 'slowmo'
+        ? (sp === 1 ? '' : ` · ${sp < 1 ? 'slow motion' : 'sped up'}`)
+        : this.blurActive() ? ' · motion blur' : '';
+      rows.push(['Output', `${geo.outW}×${geo.outH} · ${out ? fmtFps(out) : '…'} fps${how}`]);
+    }
     const e = c.encoder;
-    const got = e?.codec ? (/^(avc1|avc3)/.test(e.codec) ? 'avc' : /^(hvc1|hev1)/.test(e.codec) ? 'hevc' : 'other') : null;
-    const fallback = got && got !== this.codec ? ` · ${this.codec === 'avc' ? 'H.264' : 'HEVC'} unavailable at this size` : '';
+    const got = e?.codec ? this.effectiveCodec() : null;
+    const fallback = got && got !== this.prefs.codec ? ` · ${CODEC_LABEL[this.prefs.codec]} unavailable at this size` : '';
     rows.push(['Codec', e ? (e.codec ? `${e.label}${e.hardware ? ' · hardware' : ' · software (slow)'}${fallback}` : 'No encoder available') : '…']);
     const whole = c.inP === 0 && c.outP === c.frames - 1;
     const secs = this.rangeSeconds();
     rows.push(['Range', c.frames ? (whole ? `Whole clip · ${fmtDuration(secs)}` : `${fmtTime(c.pts![c.inP] - c.pts![0])} – ${fmtTime(c.pts![c.outP] - c.pts![0])} · ${fmtDuration(secs)}`) : '…']);
-    rows.push(['Audio', c.audio ? 'Original, copied' : 'None']);
-    rows.push(['Est. size', c.frames ? `≈ ${fmtBytes((this.bitrate() * secs) / 8)}` : '…']);
+    const len = this.outLength();
+    if (c.frames && Math.abs(len.seconds - secs) > 0.05) rows.push(['Plays for', fmtDuration(len.seconds)]);
+    rows.push(['Audio', !c.audio ? 'None' : this.audioKept() ? 'Original, copied' : 'Dropped (speed changes)']);
+    const audioBits = this.audioKept() ? 256e3 : 0;
+    rows.push(['Est. size', c.frames && out ? `≈ ${fmtBytes(((this.bitrate() + audioBits) * len.seconds) / 8)}` : '…']);
     $('export-facts').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
+    this.debug.exportPlan = { width: geo?.outW, height: geo?.outH, fps: out, frames: len.frames, seconds: len.seconds, bitrate: this.bitrate(), audio: this.audioKept(), blur: this.blurActive() };
     const sink = this.sinkKind();
-    $('btn-export-label').textContent = sink === 'fsa' ? 'Stabilize & save…' : 'Stabilize';
     $('export-note').textContent = sink === 'fsa'
       ? 'You’ll pick where to save. The file streams straight to disk, so clip length doesn’t matter.'
       : sink === 'opfs' ? 'The finished MP4 downloads when it’s done. It’s written to this browser’s private storage first.'
@@ -798,14 +1102,17 @@ export class App {
 
   private updateExportButton() {
     const c = this.clip;
-    const ok = !!c && !this.exporting && !!c.plan && c.appliedPlanId === c.planId && !!c.encoder?.codec && !c.tel?.eisBaked && !c.telError && !c.decodeError && !!c.decoder;
+    const ok = !!c && !this.exporting && !!c.plan && c.appliedPlanId === c.planId && !!c.encoder?.codec && !c.tel?.eisBaked && !c.telError && !c.decodeError && !!c.decoder
+      && !!this.outGeo() && this.outFps() > 0;
     ($('btn-export') as HTMLButtonElement).disabled = !ok;
+    $('btn-export-label').textContent = this.replanning() ? 'Re-planning…' : this.sinkKind() === 'fsa' ? 'Stabilize & save…' : 'Stabilize';
   }
 
   private lockControls(lock: boolean) {
-    for (const id of ['in-smooth', 'in-fov', 'in-horizon', 'btn-play']) ($(id) as HTMLInputElement).disabled = lock;
+    for (const id of ['in-smooth', 'in-fov', 'in-horizon', 'btn-play', 'sel-fps', 'in-custom-w', 'in-custom-fps', 'in-blur']) ($(id) as HTMLInputElement).disabled = lock;
     if (!lock && (this.clip?.decodeError || !this.clip?.frames)) ($('btn-play') as HTMLButtonElement).disabled = true;
-    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#seg-quality button, #seg-codec button'))) b.disabled = lock;
+    for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#card-export .seg button'))) b.disabled = lock;
+    if (!lock) this.renderExportOptions();
   }
 
   private renderTimeline() {
@@ -887,7 +1194,7 @@ export class App {
         this.toast('Couldn’t open the save dialog — the file will download instead.');
       }
     }
-    const est = (this.bitrate() * this.rangeSeconds()) / 8;
+    const est = (this.bitrate() * this.outLength().seconds) / 8;
     const sink = handle ? { kind: 'fsa' as const, name: handle.name, handle } : { kind: (kind === 'fsa' ? (this.caps?.opfs ? 'opfs' : 'memory') : kind) as SinkKind, name: this.outName() };
     if (sink.kind === 'memory' && est > 2e9 && !confirm(`This export will be about ${fmtBytes(est)}, which has to fit in memory in this browser. Continue?`)) return;
     if (sink.kind === 'opfs') {
@@ -909,9 +1216,15 @@ export class App {
     this.updateExportButton();
     this.showCard('progress');
     try { this.wakeLock = await (navigator as any).wakeLock?.request('screen') ?? null; } catch { this.wakeLock = null; }
-    this.renderProgress({ phase: 'starting', done: 0, total: c.outP - c.inP + 1, fps: 0, etaS: NaN, elapsedS: 0, bytes: 0 });
+    this.renderProgress({ phase: 'starting', done: 0, total: this.outLength().frames, fps: 0, etaS: NaN, elapsedS: 0, bytes: 0 });
     $('viewer').classList.remove('no-split');
-    this.postEngine({ type: 'export', settings: { bitrate: this.bitrate(), prefer: this.codec, first: c.inP, last: c.outP, includeAudio: true, sink } });
+    const settings: import('../io/protocol').ExportSettings = {
+      bitrate: this.bitrate(), prefer: this.prefs.codec, first: c.inP, last: c.outP, includeAudio: true, sink,
+      output: { size: this.sizeChoice(), aspect: this.prefs.aspect, fps: this.fpsChoice(), timing: this.prefs.timing, motionBlur: this.blurActive() },
+    };
+    this.debug.exportSettings = { ...settings, sink: { kind: sink.kind, name: sink.name } };
+    this.log(`export settings ${JSON.stringify(settings.output)} ${Math.round(settings.bitrate / 1e6)} Mb/s ${settings.prefer}`);
+    this.postEngine({ type: 'export', settings });
   }
 
   private renderProgress(p: RenderProgress) {
@@ -936,7 +1249,7 @@ export class App {
     this.lockControls(false);
     this.updateExportButton();
     $('done-title').textContent = r.name;
-    $('done-sub').textContent = `${fmtDuration(r.frames / (this.clip?.fps || 30))} of video in ${fmtDuration(r.seconds)} · ${r.fps.toFixed(0)} fps · ${fmtBytes(r.bytes)}`;
+    $('done-sub').textContent = `${r.width}×${r.height} · ${fmtFps(r.outFps)} fps · ${fmtDuration(r.durationS)} of video in ${fmtDuration(r.seconds)} · ${fmtBytes(r.bytes)}${r.audioDropped ? ' · no sound (slow motion)' : ''}`;
     const dl = $('btn-download') as HTMLAnchorElement;
     dl.hidden = true;
     try {

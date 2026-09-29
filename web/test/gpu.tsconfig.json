@@ -1,0 +1,5 @@
+{
+  "//": "Typecheck of the GPU module browser tests: npx tsc -p test/gpu.tsconfig.json",
+  "extends": "../tsconfig.json",
+  "include": ["../src", "gpu.harness.ts", "gpu.scaled.ts", "gpu.shutter.ts"]
+}

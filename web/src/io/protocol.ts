@@ -1,9 +1,9 @@
 /** Messages between the UI (main thread) and the two workers. */
-import type { Mp4Info, Plan } from '../types';
+import type { AspectChoice, Mp4Info, Plan, SizeChoice } from '../types';
 import type { StabParams } from '../ui/contracts';
 import type { RenderProgress, RenderResult } from './pipeline';
 import type { SinkRequest } from './mux';
-import type { OutCodec } from './encode';
+import type { CodecOption, OutCodec } from './encode';
 import type { DecodeReport, RapKind, StreamFacts } from './decode';
 
 /** What the UI needs to know about the telemetry (the full arrays stay in the analysis worker). */
@@ -48,6 +48,20 @@ export type AnalysisOut = ({ gen: number }) & (
   | { type: 'error'; stage: 'open' | 'telemetry' | 'plan'; message: string; id?: number });
 
 // ── engine worker ──
+/** Output picture + timing of an export (see plan.ts outputGeometry and retime.ts buildSchedule). */
+export interface OutputChoice {
+  /** output size preset or {width} */
+  size: SizeChoice;
+  /** output aspect; the engine's plan must have been built for it (the UI re-plans when it changes) */
+  aspect: AspectChoice;
+  /** output frame rate ('source' = every source frame at its own time) */
+  fps: number | 'source';
+  /** 'realtime' = same duration, audio kept; 'slowmo' = every source frame at `fps`, audio dropped */
+  timing: 'realtime' | 'slowmo';
+  /** realtime only: synthetic 180° shutter from blended stabilized frames */
+  motionBlur: boolean;
+}
+
 export interface ExportSettings {
   bitrate: number;
   prefer?: OutCodec;
@@ -55,6 +69,8 @@ export interface ExportSettings {
   last: number;
   includeAudio: boolean;
   sink: SinkRequest;
+  /** default: the plan's size at the source frame rate (the pre-options export) */
+  output?: OutputChoice;
 }
 
 /** test / support switches, from the page URL (?sp_fault=hw-first&sp_stall=3000) */
@@ -63,6 +79,8 @@ export interface EngineDebug {
   fault?: string;
   /** decoder stall watchdog, ms */
   stallMs?: number;
+  /** motion blur renderer: 'shutter' (default: gyro sub-frame synthetic shutter) or 'frames' (plain frame blend) */
+  blur?: 'shutter' | 'frames';
 }
 
 export type EngineIn =
@@ -73,7 +91,7 @@ export type EngineIn =
   | { type: 'seek'; pres: number }
   | { type: 'play'; from: number; to: number; loop: boolean }
   | { type: 'pause' }
-  | { type: 'probe-encoder'; bitrate: number; prefer?: OutCodec }
+  | { type: 'probe-encoder'; id: number; bitrate: number; prefer?: OutCodec; width: number; height: number; fps: number }
   | { type: 'export'; settings: ExportSettings }
   | { type: 'cancel' };
 
@@ -119,7 +137,9 @@ export type EngineOut =
   | { type: 'frame'; pres: number; t: number; hasWarp: boolean; ms: number }
   | { type: 'playing'; playing: boolean; stats?: { drawn: number; dropped: number; seconds: number } }
   | { type: 'plan-applied'; id: number }
-  | { type: 'encoder'; codec: string | null; label: string; hardware: boolean; width: number; height: number; fps: number }
+  | { type: 'encoder'; id: number; codec: string | null; label: string; hardware: boolean; width: number; height: number; fps: number;
+      /** every codec the picker offers, and whether this browser can encode it at this size / rate */
+      options: CodecOption[] }
   | { type: 'export-progress'; p: RenderProgress }
   | { type: 'export-done'; result: RenderResult }
   | { type: 'export-error'; message: string; cancelled: boolean; details?: ErrorDetails }

@@ -30,15 +30,29 @@
 // SAMPLING: Lanczos-3 (6x6, per-axis normalised; default), Catmull-Rom (a=-0.5) or bilinear — override TAPS = 6/4/2 —
 //   manual taps clamped to the edge, fetched 2x2 at a time with textureGather from float intermediates (the external
 //   texture itself is read once per source pixel, by the convert pass).
+// DOWNSCALED OUTPUTS (output sparser than the source, e.g. 4K -> 1080p/720p). A single interpolation tap per output
+//   pixel would alias (moire that crawls = shimmer as the path moves), so warp.ts then renders in two stages:
+//   warp_ss  warps onto a SUPERSAMPLED grid of the output (iW x iH = ceil(outW*s) x ceil(outH*s), per-axis scales
+//            sx = iW/outW, sy = iH/outH ~ s = source px per output px at the densest point, i.e. the intermediate is
+//            at least as dense as the source everywhere): intermediate pixel q is full-res output position
+//            X = (q + 0.5)/sx - 0.5 (render_ref's out_scale convention); Y' per pixel, CbCr per 2x2 block at its
+//            chroma site (2a, 2b+0.5), exactly like the direct warp;
+//   down_h / down_v  separable Lanczos-3 DOWNSCALE (kernel stretched by sx / sy, i.e. an ideal low-pass at the output
+//            Nyquist, 6*s+1 taps per axis, per-output-pixel normalised, clamp-to-edge) of those camera-domain float
+//            planes to the output grid, luma per output pixel and chroma once per 2x2 output block at its chroma site
+//            (the chroma plane is filtered with the same kernel in chroma-texel units). down_v composes R'G'B' into the
+//            canvas as the direct warp does (or float luma for tests).
+//   = the reference "warp at full resolution, then Lanczos-downscale" computed without a full-resolution output.
 
 struct Params {
   outFx: f32, outCx: f32, outCy: f32, lensModel: u32,     // lensModel: 0 pinhole, 1 kb4
   fx: f32, fy: f32, cx: f32, cy: f32,
   k1: f32, k2: f32, k3: f32, k4: f32,
   srcW: f32, srcH: f32, nRows: u32, iters: u32,
-  outSx: f32, outSy: f32, dstW: u32, dstH: u32,          // output grid size (+ scale for the coord map)
+  outSx: f32, outSy: f32, dstW: u32, dstH: u32,          // warp grid size + its scale (coord map / supersampling)
   kr: f32, kb: f32, defTransfer: u32, forceTransfer: i32,  // source matrix; transfer default; >= 0 forces a transfer
   calibX: u32, calibY: u32, forceMode: u32, dbg: u32,     // calib grid (8x8 workgroups); 0 auto/1 planar/2 rgb; debug
+  finW: u32, finH: u32, nTaps: u32, pad1: u32,            // final output size, downscale taps per table entry
 };
 
 // Transfers T_src: 0 = sRGB (no-op), 1 = gamma 1.961 (Apple BT.709), 2 = BT.709 OETF, 3 = gamma 2.2, 4 = gamma 2.4,
@@ -72,6 +86,15 @@ override GATHER: bool = true;     // float intermediates: textureGather quads (e
 @group(0) @binding(12) var<storage, read> cstateR: ColorState;
 @group(0) @binding(13) var outTex: texture_storage_2d<rgba8unorm, write>;
 @group(0) @binding(14) var smp: sampler;   // non-filtering, clamp-to-edge (gathers only)
+// supersampled path (warp_ss -> down_h -> down_v)
+@group(0) @binding(15) var ssY: texture_2d<f32>;                        // intermediate Y' (iW x iH)
+@group(0) @binding(16) var ssC: texture_2d<f32>;                        // intermediate CbCr per 2x2 block
+@group(0) @binding(17) var hYw: texture_storage_2d<r32float, write>;    // after down_h: finW x iH
+@group(0) @binding(18) var hCw: texture_storage_2d<rg32float, write>;   // ceil(finW/2) x ceil(iH/2)
+@group(0) @binding(19) var hY: texture_2d<f32>;
+@group(0) @binding(20) var hC: texture_2d<f32>;
+@group(0) @binding(21) var ssYw: texture_storage_2d<r32float, write>;
+@group(0) @binding(22) var ssCw: texture_storage_2d<rg32float, write>;
 
 const PI: f32 = 3.14159265358979;
 const HALF_PI: f32 = 1.57079632679490;
@@ -451,6 +474,110 @@ fn warp(@builtin(global_invocation_id) gid: vec3u) {
         }
       }
     }
+  }
+}
+
+// ---- supersampled path. Intermediate pixel q -> full-res output position (pixel-centre convention).
+fn out_pos(q: vec2f) -> vec2f { return (q + 0.5) / vec2f(P.outSx, P.outSy) - 0.5; }
+
+@compute @workgroup_size(8, 8)
+fn warp_ss(@builtin(global_invocation_id) gid: vec3u) {
+  let p0 = 2u * gid.xy;
+  if (p0.x >= P.dstW || p0.y >= P.dstH) { return; }
+  let scc = source_coord(out_pos(vec2f(f32(p0.x), f32(p0.y) + 0.5)));     // the block's chroma site
+  var cc = vec2f(0.0);
+  if (scc.z > 0.5) {
+    if (cstateR.planar == 1u) { cc = sample2(texCH, vec2f(scc.x * 0.5, (scc.y - 0.5) * 0.5)); }
+    else { cc = sample_cf(scc.xy); }
+  }
+  textureStore(ssCw, gid.xy, vec4f(cc, 0.0, 1.0));
+  for (var dy = 0u; dy < 2u; dy++) {
+    for (var dx = 0u; dx < 2u; dx++) {
+      let p = p0 + vec2u(dx, dy);
+      if (p.x < P.dstW && p.y < P.dstH) {
+        let sc = source_coord(out_pos(vec2f(p)));
+        var y = 0.0;
+        if (sc.z > 0.5) { y = sample1(texY, sc.xy); }
+        textureStore(ssYw, p, vec4f(y, 0.0, 0.0, 1.0));
+      }
+    }
+  }
+}
+
+// Downscale taps: precomputed on the CPU (warp.ts downscaleTable, float64 Lanczos-3 normalised per output sample, the
+// kernel stretched by sx / sy) — they depend only on the output column / row, never on the frame. Table DT: entries
+// of (1 + NT) f32 = first input texel i0, then NT weights for texels i0 .. i0+NT-1 (clamped to the edge; unused
+// weights 0). Entry order: luma columns [finW], chroma columns [ceil(finW/2)], luma rows [finH], chroma rows
+// [ceil(finH/2)]. Luma texel units = intermediate pixels; chroma = intermediate chroma texels (texel a at luma 2a).
+@group(0) @binding(23) var<storage, read> DT: array<f32>;
+fn dt_base(e: u32) -> u32 { return e * (P.nTaps + 1u); }
+
+// horizontal pass: luma (finW x iH) and chroma (ceil(finW/2) x ceil(iH/2): output chroma columns x intermediate rows)
+@compute @workgroup_size(8, 8)
+fn down_h(@builtin(global_invocation_id) gid: vec3u) {
+  let dY = vec2i(textureDimensions(ssY));
+  let dC = vec2i(textureDimensions(ssC));
+  let nt = P.nTaps;
+  if (gid.x < P.finW && i32(gid.y) < dY.y) {
+    let b = dt_base(gid.x);
+    let i0 = i32(DT[b]);
+    var acc = 0.0;
+    for (var t = 0u; t < nt; t++) {
+      acc += DT[b + 1u + t] * textureLoad(ssY, vec2i(clamp(i0 + i32(t), 0, dY.x - 1), i32(gid.y)), 0).x;
+    }
+    textureStore(hYw, gid.xy, vec4f(acc, 0.0, 0.0, 1.0));
+  }
+  let cw = (P.finW + 1u) / 2u;
+  if (gid.x < cw && i32(gid.y) < dC.y) {
+    let b = dt_base(P.finW + gid.x);
+    let i0 = i32(DT[b]);
+    var acc = vec2f(0.0);
+    for (var t = 0u; t < nt; t++) {
+      acc += DT[b + 1u + t] * textureLoad(ssC, vec2i(clamp(i0 + i32(t), 0, dC.x - 1), i32(gid.y)), 0).xy;
+    }
+    textureStore(hCw, gid.xy, vec4f(acc, 0.0, 1.0));
+  }
+}
+
+fn emit_fin(p: vec2u, rgb: vec3f, y: f32) {
+  if (P.dbg == 1u) { coordOut[p.y * P.finW + p.x] = y; }
+  else { textureStore(outTex, p, vec4f(rgb, 1.0)); }
+}
+
+// vertical pass + compose: one thread per 2x2 output block (chroma once at its site (2i, 2j+0.5), luma per pixel)
+@compute @workgroup_size(8, 8)
+fn down_v(@builtin(global_invocation_id) gid: vec3u) {
+  let p0 = 2u * gid.xy;
+  if (p0.x >= P.finW || p0.y >= P.finH) { return; }
+  let dY = vec2i(textureDimensions(hY));
+  let dC = vec2i(textureDimensions(hC));
+  let nt = P.nTaps;
+  let cw = (P.finW + 1u) / 2u;
+  let rowL = P.finW + cw;              // first luma-row entry
+  let rowC = rowL + P.finH;            // first chroma-row entry
+  let bc = dt_base(rowC + gid.y);
+  let j0c = i32(DT[bc]);
+  let cx = min(i32(gid.x), dC.x - 1);
+  var cc = vec2f(0.0);
+  for (var t = 0u; t < nt; t++) {
+    cc += DT[bc + 1u + t] * textureLoad(hC, vec2i(cx, clamp(j0c + i32(t), 0, dC.y - 1)), 0).xy;
+  }
+  let x1 = min(i32(p0.x) + 1, dY.x - 1);
+  for (var dy = 0u; dy < 2u; dy++) {
+    let py = p0.y + dy;
+    if (py >= P.finH) { continue; }
+    let b = dt_base(rowL + py);
+    let j0 = i32(DT[b]);
+    var a0 = 0.0;
+    var a1 = 0.0;
+    for (var t = 0u; t < nt; t++) {
+      let wt = DT[b + 1u + t];
+      let jj = clamp(j0 + i32(t), 0, dY.y - 1);
+      a0 += wt * textureLoad(hY, vec2i(i32(p0.x), jj), 0).x;
+      a1 += wt * textureLoad(hY, vec2i(x1, jj), 0).x;
+    }
+    emit_fin(vec2u(p0.x, py), to_rgb(vec3f(a0, cc)), a0);
+    if (p0.x + 1u < P.finW) { emit_fin(vec2u(p0.x + 1u, py), to_rgb(vec3f(a1, cc)), a1); }
   }
 }
 

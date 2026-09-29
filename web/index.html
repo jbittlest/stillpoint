@@ -138,22 +138,90 @@
         <p class="fine mode-note" id="mode-note"><strong>Gyro-precise mode.</strong> The web version steers by the camera’s gyro alone. The Mac app adds a vision pass on top that isn’t in the browser yet.</p>
       </section>
 
-      <section class="card" id="card-export">
-        <div class="card-label">Export</div>
-        <div class="seg seg-2" id="seg-codec" role="radiogroup" aria-label="Format">
-          <button role="radio" data-c="hevc" aria-checked="true">HEVC<small>smaller files</small></button>
-          <button role="radio" data-c="avc">H.264<small>plays everywhere</small></button>
+      <section class="card card-export" id="card-export">
+        <div class="card-label">Export <span class="card-aside mono" id="out-summary"></span></div>
+
+        <div class="field">
+          <div class="field-head"><span class="field-label" id="lbl-size">Size</span><span class="field-value mono" id="out-dims"></span></div>
+          <div class="seg seg-6" id="seg-size" role="radiogroup" aria-labelledby="lbl-size">
+            <button type="button" role="radio" data-size="source" aria-checked="true">Source</button>
+            <button type="button" role="radio" data-size="2.7k">2.7K</button>
+            <button type="button" role="radio" data-size="1440p">1440p</button>
+            <button type="button" role="radio" data-size="1080p">1080p</button>
+            <button type="button" role="radio" data-size="720p">720p</button>
+            <button type="button" role="radio" data-size="custom">Custom</button>
+          </div>
+          <div class="inline-field" id="row-custom-w" hidden>
+            <label for="in-custom-w">Width</label>
+            <span class="num-wrap"><input type="number" id="in-custom-w" class="num" inputmode="numeric" min="160" max="7680" step="2" value="1600" /><span class="unit">px</span></span>
+            <span class="inline-derived mono" id="custom-h"></span>
+          </div>
+          <p class="field-note is-warn" id="note-size" hidden></p>
         </div>
-        <div class="seg" id="seg-quality" role="radiogroup" aria-label="Quality">
-          <button role="radio" data-q="balanced">Balanced<small id="q-balanced"></small></button>
-          <button role="radio" data-q="high" aria-checked="true">High<small id="q-high"></small></button>
-          <button role="radio" data-q="max">Maximum<small id="q-max"></small></button>
+
+        <div class="field">
+          <div class="field-head"><span class="field-label" id="lbl-aspect">Aspect</span><span class="field-value" id="aspect-state"></span></div>
+          <div class="seg seg-5 seg-aspect" id="seg-aspect" role="radiogroup" aria-labelledby="lbl-aspect">
+            <button type="button" role="radio" data-aspect="source" aria-checked="true"><i class="ar" id="ar-source" style="--gw:15px;--gh:8.4px"></i><span>Source</span></button>
+            <button type="button" role="radio" data-aspect="16:9"><i class="ar" style="--gw:15px;--gh:8.4px"></i><span>16:9</span></button>
+            <button type="button" role="radio" data-aspect="4:3"><i class="ar" style="--gw:13px;--gh:9.75px"></i><span>4:3</span></button>
+            <button type="button" role="radio" data-aspect="1:1"><i class="ar" style="--gw:11px;--gh:11px"></i><span>1:1</span></button>
+            <button type="button" role="radio" data-aspect="9:16"><i class="ar" style="--gw:8.4px;--gh:15px"></i><span>9:16</span></button>
+          </div>
         </div>
+
+        <div class="field">
+          <div class="field-head"><label class="field-label" for="sel-fps">Frame rate</label><span class="field-value" id="fps-note"></span></div>
+          <div class="fps-row">
+            <span class="select-wrap"><select id="sel-fps" class="select">
+              <option value="source">Source</option>
+              <option value="60">60</option>
+              <option value="59.94">59.94</option>
+              <option value="50">50</option>
+              <option value="30">30</option>
+              <option value="29.97">29.97</option>
+              <option value="25">25</option>
+              <option value="24">24</option>
+              <option value="23.976">23.976</option>
+              <option value="custom">Custom…</option>
+            </select></span>
+            <span class="num-wrap" id="wrap-custom-fps" hidden><input type="number" id="in-custom-fps" class="num" inputmode="decimal" min="1" max="240" step="0.001" value="48" aria-label="Custom frame rate" /><span class="unit">fps</span></span>
+          </div>
+          <div class="seg seg-2 seg-timing" id="seg-timing" role="radiogroup" aria-label="Timing">
+            <button type="button" role="radio" data-timing="realtime" aria-checked="true">Real-time<small id="timing-rt">keeps sound</small></button>
+            <button type="button" role="radio" data-timing="slowmo">Slow motion<small id="timing-sm">every frame</small></button>
+          </div>
+          <label class="switch-row switch-compact" id="row-blur">
+            <span><span class="switch-title">Natural motion blur</span><span class="switch-sub" id="blur-sub">180° shutter, traced along the gyro path</span></span>
+            <input type="checkbox" id="in-blur" class="switch" />
+          </label>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><span class="field-label" id="lbl-quality">Quality</span><span class="field-value" id="quality-note"></span></div>
+          <div class="seg" id="seg-quality" role="radiogroup" aria-labelledby="lbl-quality">
+            <button type="button" role="radio" data-q="small">Smaller<small id="q-small"></small></button>
+            <button type="button" role="radio" data-q="high" aria-checked="true">High<small id="q-high"></small></button>
+            <button type="button" role="radio" data-q="max">Max<small id="q-max"></small></button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><span class="field-label" id="lbl-codec">Format</span><span class="field-value" id="codec-note"></span></div>
+          <div class="seg" id="seg-codec" role="radiogroup" aria-labelledby="lbl-codec">
+            <button type="button" role="radio" data-c="hevc" aria-checked="true">HEVC<small>smaller files</small></button>
+            <button type="button" role="radio" data-c="avc">H.264<small>plays anywhere</small></button>
+            <button type="button" role="radio" data-c="av1" hidden>AV1<small>smallest · slow</small></button>
+          </div>
+        </div>
+
         <dl class="facts facts-tight" id="export-facts"></dl>
-        <button class="btn btn-primary btn-block" id="btn-export" disabled>
-          <span id="btn-export-label">Stabilize &amp; save</span>
-        </button>
-        <p class="fine" id="export-note"></p>
+        <p class="fine export-note" id="export-note"></p>
+        <div class="export-cta">
+          <button class="btn btn-primary btn-block" id="btn-export" disabled>
+            <span id="btn-export-label">Stabilize &amp; save</span>
+          </button>
+        </div>
       </section>
 
       <section class="card card-progress" id="card-progress" hidden>

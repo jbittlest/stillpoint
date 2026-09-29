@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:e2e": "node test/app.e2e.mjs",
     "test:decode": "node test/decode.e2e.mjs",
+    "test:export": "node test/export.e2e.mjs",
     "test:robustness": "npm --prefix test/robustness run matrix"
   },
   "devDependencies": {

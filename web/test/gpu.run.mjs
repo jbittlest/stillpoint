@@ -3,6 +3,10 @@
 //   node test/gpu.run.mjs probe                 capability probe (WebGPU adapter, WebCodecs HEVC/H.264, external textures)
 //   node test/gpu.run.mjs golden [fixture...]   decode + warp the fixture frames, dump readbacks for test/gpu.golden.py
 //   node test/gpu.run.mjs bench                 4K warp throughput
+//   node test/gpu.run.mjs selftest | scaledself | shimmer | blend      footage-free pass/fail suites
+//   node test/gpu.run.mjs scaled [fixture...]   1080p/720p-from-4K dumps for test/gpu.golden_scaled.py
+//   node test/gpu.run.mjs benchscaled           warp throughput at 4K / 1080p / 720p output + blend throughput
+//   node test/gpu.run.mjs shutter               gyro sub-frame synthetic shutter (motion blur) vs a dense reference
 //
 // Clips are served by the dev server from $STILLPOINT_CLIPS_DIR (a scratch dir of symlinks — never copies).
 // Binary results are POSTed by the page to /__gpu_out/<name> and land in $GPU_OUT_DIR.
@@ -22,6 +26,8 @@ const CLIP_SRC = {
   'DJI_0026.MP4': [join(process.env.STILLPOINT_O3_DIR ?? join(os.homedir(), 'Desktop/untitled folder 4'), 'DJI_0026.MP4')],
   'DJI_20260926153751_0005_D.MP4': [join(os.homedir(), 'Desktop/DJI_20260926153751_0005_D.MP4'),
     '/Volumes/Untitled/DCIM/DJI_001/DJI_20260926153751_0005_D.MP4'],
+  // oa4scaled: the 6.7 GB Osmo Action 4 4:3 HEVC 10-bit clip (read through range requests, never copied)
+  'DJI_20260927091931_0012_D.MP4': [process.env.CLIP_OA4 ?? join(os.homedir(), 'Desktop/DJI_20260927091931_0012_D.MP4')],
 };
 for (const [name, cands] of Object.entries(CLIP_SRC)) {
   const link = join(CLIPS, name);

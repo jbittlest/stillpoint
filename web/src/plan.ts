@@ -9,10 +9,17 @@
  *   row matrices     M_kj = R(q_row)ᵀ · R(virt_k)   (output ray -> source camera ray; the renderer lerps rows)
  *   virtual path     smooth.ts optimizePath (crop-constrained, exact renderer mapping)
  *
- * Output: rectilinear, same size as the source, widest focal from `outFx` | `fovDeg` | `footprint` (default 0.60
- * of the source area at identity), zoom only where the crop is otherwise infeasible (<= maxZoom).
+ * Output: rectilinear, the source size (even) or `output` (any size / aspect, see outputGeometry), widest focal from
+ * `outFx` | `fovDeg` | `footprint` (default 0.60 of the source area at identity; for another aspect: of the largest
+ * rectangle of that aspect inside the source), zoom only where the crop is otherwise infeasible (<= maxZoom).
+ *
+ * Output targeting: the path is solved for the REFERENCE rectangle = the output rectangle scaled to the source's
+ * pixel density (the largest rectangle of the output's aspect inside the source), so every output size of one
+ * aspect gets the SAME virtual path and row matrices; only outFx scales (x outW/refW). The crop constraint uses the
+ * output's own aspect (a 9:16 output from a 16:9 source has lots of horizontal room, the same vertical room as the
+ * 16:9 default).
  */
-import type { Lens, Plan, Telemetry } from './types';
+import type { AspectChoice, Lens, OutputGeometry, Plan, SizeChoice, Telemetry } from './types';
 import { fxForFootprint, hfovToFx, identityFootprint, project } from './lens';
 import { OrientationSeries, qconjMulInto, qmulInto, qnormalizeInPlace, quatToMatInto } from './so3';
 import { optimizePath, type PathProblem, type SmoothInfo, type SmoothOptions } from './smooth';
@@ -25,6 +32,10 @@ export interface StabParams {
   /** source area fraction used by the output at identity, default ~0.60 */
   footprint?: number;
   horizonLock?: boolean;
+  /** output frame size / aspect (outputGeometry); default = the source size (even-rounded). `fovDeg` is the OUTPUT's
+   *  horizontal FOV; `footprint` is relative to the largest rectangle of the output aspect inside the source (so the
+   *  default 0.60 means the same crop tightness for every aspect); `outFx` is in output px. */
+  output?: OutputGeometry;
   // ---- extensions (optional; nothing in the shared contract depends on them)
   /** explicit widest output focal (output px); overrides fovDeg/footprint */
   outFx?: number;
@@ -49,6 +60,13 @@ export interface PlanEx extends Plan {
   exposureAvg: boolean;
   smoothInfo: SmoothInfo;
   timings: Record<string, number>;
+  /** reference rectangle the path was solved for (source pixel density; may be fractional for rounded outputs) and
+   *  the output scale outW/refW (outFx = solver focal x pxScale) */
+  refW: number;
+  refH: number;
+  pxScale: number;
+  /** the output geometry used (outputGeometry(src, 'source', 'source') when none was requested) */
+  output: OutputGeometry;
 }
 
 export const DEFAULT_FOOTPRINT = 0.60;
@@ -182,12 +200,99 @@ function gravityPerFrame(tel: Telemetry, ser: OrientationSeries): Float64Array |
   return out;
 }
 
-/** Widest output focal (px) for the given parameters. */
+// ================================================================================================= output geometry
+
+const ASPECTS: Record<Exclude<AspectChoice, 'source'>, [number, number]> = {
+  '16:9': [16, 9], '4:3': [4, 3], '1:1': [1, 1], '9:16': [9, 16],
+};
+/** short side (px) of the 'NNNNp' presets; '2.7k' is a LONG side */
+const SHORT_SIDE: Record<string, number> = { '1440p': 1440, '1080p': 1080, '720p': 720 };
+const LONG_27K = 2704;
+
+/** largest even integer <= x (>= 2); exact for the integer ratios used here */
+function evenFloor(x: number): number {
+  return Math.max(2, 2 * Math.floor(x / 2 + 1e-9));
+}
+
+/** aspect as an integer ratio [w, h] (the even-rounded source size for 'source') */
+export function aspectRatio(srcW: number, srcH: number, aspect: AspectChoice): [number, number] {
+  if (aspect === 'source') return [evenFloor(srcW), evenFloor(srcH)];
+  const r = ASPECTS[aspect];
+  if (!r) throw new RangeError(`unknown aspect '${aspect}'`);
+  return r;
+}
+
+/**
+ * Output frame size for a size preset and an aspect ratio (all dims even, >= 2):
+ *   'source'              the source size (even) at 'source' aspect, else the largest rectangle of the aspect that
+ *                         fits inside the source (3840x2160 -> 9:16 1214x2160, 1:1 2160x2160, 4:3 2880x2160)
+ *   '1440p'/'1080p'/'720p' the SHORT side: height of landscape/square outputs (1080p -> 1920x1080 at 16:9,
+ *                         1440x1080 at 4:3, 1080x1080 at 1:1), width of portrait ones (9:16 -> 1080x1920)
+ *   '2.7k'                the LONG side 2704: 2704x1520 at 16:9, 2704x2028 at 4:3, 2704x2704 at 1:1, 1520x2704 at 9:16
+ *   {width}               explicit width (even-floored), height from the aspect
+ * The derived side is floored to even (2704*9/16 = 1521 -> 1520). `scale` = outW / width of the 'source' rectangle
+ * of the aspect; `upscale` flags outputs larger than that (more pixels than the source can resolve: warn).
+ */
+export function outputGeometry(srcW: number, srcH: number, size: SizeChoice, aspect: AspectChoice): OutputGeometry {
+  if (!(srcW >= 2 && srcH >= 2 && Number.isFinite(srcW) && Number.isFinite(srcH))) {
+    throw new RangeError(`outputGeometry: bad source size ${srcW}x${srcH}`);
+  }
+  const [rn, rd] = aspectRatio(srcW, srcH, aspect);
+  const sw = evenFloor(srcW), sh = evenFloor(srcH);
+  const portrait = rn < rd;
+  // largest rectangle of the aspect inside the source
+  let refW: number, refH: number;
+  if (aspect === 'source') { refW = sw; refH = sh; }
+  else if (rn * sh >= rd * sw) { refW = sw; refH = Math.min(sh, evenFloor(sw * rd / rn)); }   // wider than the source
+  else { refH = sh; refW = Math.min(sw, evenFloor(sh * rn / rd)); }                          // narrower
+  let W: number, H: number;
+  if (size === 'source') { W = refW; H = refH; }
+  else if (typeof size === 'object' && size !== null) {
+    const w = Number(size.width);
+    if (!(w >= 2) || !Number.isFinite(w)) throw new RangeError(`outputGeometry: bad custom width ${size.width}`);
+    W = evenFloor(w); H = evenFloor(W * rd / rn);
+  } else if (size === '2.7k') {
+    if (portrait) { H = LONG_27K; W = evenFloor(LONG_27K * rn / rd); }
+    else { W = LONG_27K; H = evenFloor(LONG_27K * rd / rn); }
+  } else {
+    const n = SHORT_SIDE[size as string];
+    if (!n) throw new RangeError(`outputGeometry: unknown size '${String(size)}'`);
+    if (portrait) { W = n; H = evenFloor(n * rd / rn); }
+    else { H = n; W = evenFloor(n * rn / rd); }
+  }
+  const scale = W / refW;
+  return { outW: W, outH: H, aspect, scale, upscale: scale > 1 + 1e-9 };
+}
+
+/**
+ * Reference rectangle of an output (outW x outH) for a source: the output rectangle scaled to the largest size that
+ * fits the (even) source. Exactly the even source size when the output has the source's aspect; otherwise one side
+ * is the source's and the other may be fractional (2704x1520 from 3840x2160 -> 3840x2158.58).
+ */
+export function referenceRect(srcW: number, srcH: number, outW: number, outH: number): { refW: number; refH: number; pxScale: number } {
+  const sw = evenFloor(srcW), sh = evenFloor(srcH);
+  let refW: number, refH: number;
+  if (outW * sh === outH * sw) { refW = sw; refH = sh; }
+  else if (outW * sh > outH * sw) { refW = sw; refH = sw * outH / outW; }
+  else { refH = sh; refW = sh * outW / outH; }
+  const snap = (v: number) => (Math.abs(v - Math.round(v)) < 1e-9 ? Math.round(v) : v);
+  refW = snap(refW); refH = snap(refH);
+  return { refW, refH, pxScale: outW / refW };
+}
+
+/** Widest output focal (px of the rectangle outW x outH) for the given parameters. `footprint` is scaled by the
+ *  fraction of the source area the largest rectangle of this aspect covers (1 at the source's aspect). */
 export function outputFocal(tel: Telemetry, p: StabParams, outW = tel.width, outH = tel.height): number {
   if (p.outFx && p.outFx > 0) return p.outFx;
   if (p.fovDeg && p.fovDeg > 0) return hfovToFx(p.fovDeg, outW);
   const a = p.footprint && p.footprint > 0 ? p.footprint : DEFAULT_FOOTPRINT;
-  return fxForFootprint(tel.lens, tel.width, tel.height, outW, outH, a);
+  return fxForFootprint(tel.lens, tel.width, tel.height, outW, outH, a * aspectAreaFraction(tel.width, tel.height, outW, outH));
+}
+
+/** Area fraction of the (even) source covered by the largest rectangle of the aspect outW:outH (1 at the source's). */
+export function aspectAreaFraction(srcW: number, srcH: number, outW: number, outH: number): number {
+  const { refW, refH } = referenceRect(srcW, srcH, outW, outH);
+  return (refW * refH) / (evenFloor(srcW) * evenFloor(srcH));
 }
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -201,11 +306,17 @@ export function buildPlan(tel: Telemetry, p: StabParams, onProgress?: (f: number
   }
   const F = tel.framePts.length;
   const srcW = tel.width, srcH = tel.height;
-  const outW = srcW - (srcW % 2), outH = srcH - (srcH % 2);
+  const geo: OutputGeometry = p.output
+    ? { ...p.output }
+    : outputGeometry(srcW, srcH, 'source', 'source');
+  if (!(geo.outW >= 2 && geo.outH >= 2)) throw new RangeError(`buildPlan: bad output size ${geo.outW}x${geo.outH}`);
+  const outW = evenFloor(geo.outW), outH = evenFloor(geo.outH);   // 4:2:0 encoders need even sizes
+  // the path is solved at the source's pixel density (reference rectangle); the output focal is that x pxScale
+  const { refW, refH, pxScale } = referenceRect(srcW, srcH, outW, outH);
   const nRows = Math.max(2, Math.round(p.nRows ?? 32));
   const lens: Lens = { ...tel.lens, k: [...tel.lens.k] as [number, number, number, number],
     width: tel.lens.width || srcW, height: tel.lens.height || srcH };
-  const fx0 = outputFocal(tel, p, outW, outH);
+  const fx0Ref = p.outFx && p.outFx > 0 ? p.outFx / pxScale : outputFocal(tel, p, refW, refH);
   const maxZoom = Math.max(1, p.maxZoom ?? 1.5);
   const prog = (a: number, b: number) => (f: number) => onProgress?.(a + (b - a) * f);
 
@@ -222,11 +333,11 @@ export function buildPlan(tel: Telemetry, p: StabParams, onProgress?: (f: number
   // ---- virtual path
   t = now();
   const prob: PathProblem = {
-    nFrames: F, fps: tel.fps, srcW, srcH, outW, outH, lens, camQ, camRows: rows, nRows,
+    nFrames: F, fps: tel.fps, srcW, srcH, outW: refW, outH: refH, lens, camQ, camRows: rows, nRows,
     segments: tel.segments, gravityW: p.horizonLock ? gravityPerFrame(tel, ser) : undefined,
   };
   const res = optimizePath(prob, {
-    smoothness: p.smoothness ?? 1, fx0, fxMax: fx0 * maxZoom, allowZoom: maxZoom > 1,
+    smoothness: p.smoothness ?? 1, fx0: fx0Ref, fxMax: fx0Ref * maxZoom, allowZoom: maxZoom > 1,
     horizonLock: !!p.horizonLock, onProgress: prog(0.2, 0.97), log: p.log, ...(p.smooth ?? {}),
   });
   timings.path = (now() - t) / 1000;
@@ -237,12 +348,43 @@ export function buildPlan(tel: Telemetry, p: StabParams, onProgress?: (f: number
   timings.rowMats = (now() - t) / 1000;
   timings.total = (now() - T0) / 1000;
   onProgress?.(1);
+  const outFx = new Float32Array(F);
+  for (let k = 0; k < F; k++) outFx[k] = res.outFx[k] * pxScale;
+  const fx0 = fx0Ref * pxScale;
   return {
-    srcW, srcH, outW, outH, lens, framePts: Float64Array.from(tel.framePts), outFx: Float32Array.from(res.outFx),
+    srcW, srcH, outW, outH, lens, framePts: Float64Array.from(tel.framePts), outFx,
     nRows, rowMats: rows, readoutS: tel.readoutS,
     virtQ: res.virtQ, fx0, hfovDeg: 2 * Math.atan(outW / 2 / fx0) * 180 / Math.PI, exposureAvg: avg,
-    smoothInfo: res.info, timings,
+    smoothInfo: res.info, timings, refW, refH, pxScale,
+    output: { ...geo, outW, outH },
   };
+}
+
+/**
+ * The same plan for another output size of the same aspect (e.g. a small preview of a 4K export plan): identical
+ * virtual path and row matrices, outFx scaled by outW / plan.outW. Throws when the aspect differs by more than the
+ * even-rounding tolerance (a different aspect needs its own buildPlan: the crop constraint depends on it).
+ */
+export function rescalePlan<P extends Plan>(plan: P, outW: number, outH: number): P {
+  const w = evenFloor(outW), h = evenFloor(outH);
+  const a0 = plan.outW / plan.outH, a1 = w / h;
+  const tol = 2 / Math.min(w, h, plan.outW, plan.outH) + 1e-9;   // one even-rounding step on either side
+  if (Math.abs(a1 / a0 - 1) > tol) {
+    throw new RangeError(`rescalePlan: ${w}x${h} has another aspect than ${plan.outW}x${plan.outH}; build a new plan`);
+  }
+  const sc = w / plan.outW;
+  const outFx = new Float32Array(plan.outFx.length);
+  for (let k = 0; k < outFx.length; k++) outFx[k] = plan.outFx[k] * sc;
+  const ex = plan as unknown as Partial<PlanEx>;
+  const extra: Partial<PlanEx> = {};
+  if (typeof ex.fx0 === 'number') {
+    extra.fx0 = ex.fx0 * sc;
+    extra.hfovDeg = 2 * Math.atan(w / 2 / extra.fx0) * 180 / Math.PI;
+  }
+  if (typeof ex.pxScale === 'number' && typeof ex.refW === 'number') extra.pxScale = w / ex.refW;
+  if (ex.output) extra.output = { ...ex.output, outW: w, outH: h, scale: typeof ex.refW === 'number' ? w / ex.refW : undefined,
+    upscale: typeof ex.refW === 'number' ? w / ex.refW > 1 + 1e-9 : undefined };
+  return { ...plan, ...extra, outW: w, outH: h, outFx };
 }
 
 // ================================================================================================= diagnostics

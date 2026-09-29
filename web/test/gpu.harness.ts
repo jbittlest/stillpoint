@@ -5,10 +5,12 @@
 //             output and an encoder round trip, dumped for test/gpu.golden.py (float64 render_ref.py reference)
 //   bench     4K throughput of warp() -> VideoFrame, GPU pass times (timestamp queries);  variants: tap-fetch A/B
 //   probe / extfit / copyfit / enccolor   the browser-behaviour measurements behind warp.ts's colour contract
+//   scaledself / scaled / shimmer / blend / benchscaled   outputs != source size + the Blender (test/gpu.scaled.ts)
 import o3Fixture from './fixtures/gpu/o3_0026.json';
 import oa4Fixture from './fixtures/gpu/oa4_0005.json';
 import { Warper, type WarpKernel } from '../src/gpu/warp';
 import type { Plan } from '../src/types';
+import { runScaled, SCALED_MODES } from './gpu.scaled';
 
 interface FixSample { i: number; offset: number; size: number; pts: number; key: boolean }
 interface FixRecord { k: number; sample: number; pts: number; outFx: number; rowMats: number[] }
@@ -722,6 +724,8 @@ const argList = (params.get('args') || '').split(',').filter(a => a && !a.starts
     else if (mode === 'bench') done(await bench(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'variants') done(await variants(argList.length ? argList : Object.keys(FIXTURES)));
     else if (mode === 'selftest') done(await selftest());
+    else if (SCALED_MODES.includes(mode)) done(await runScaled(mode, { FIXTURES, decodeSample, fixturePlan, gpuDevice,
+      frameBytes, post, log, refSourceCoord, refSample, flags: argFlags, args: argList }));
     else throw new Error('unknown mode ' + mode);
   } catch (e) {
     log('ERROR', String(e), (e as Error).stack || '');

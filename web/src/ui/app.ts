@@ -4,7 +4,7 @@
  */
 import type { Mp4Info, Mp4Track, Plan } from '../types';
 import type { StabParams } from './contracts';
-import type { AnalysisIn, AnalysisOut, EngineIn, EngineOut, PlanSummary, TelemetrySummary } from '../io/protocol';
+import type { AnalysisIn, AnalysisOut, DecoderInfo, EngineDebug, EngineIn, EngineOut, ErrorDetails, PlanSummary, TelemetrySummary } from '../io/protocol';
 import type { RenderProgress, RenderResult } from '../io/pipeline';
 import type { SinkKind } from '../io/mux';
 import { getOpfsExport } from '../io/mux';
@@ -34,6 +34,12 @@ interface ClipState {
   inP: number;
   outP: number;
   pres: number;
+  /** the engine's video decoder for this clip (hardware / software, why) */
+  decoder?: DecoderInfo;
+  /** the clip can't be decoded on this computer (friendly reason): no preview, no export */
+  decodeError?: string;
+  /** engine notes about the file (e.g. incomplete copy) */
+  engineNotes?: string[];
 }
 
 /** test / debugging hook */
@@ -51,6 +57,13 @@ export interface DebugHook {
   lastFrame?: { pres: number; ms: number; hasWarp: boolean };
   playStats?: { drawn: number; dropped: number; seconds: number };
   downloadUrl?: string;
+  /** the decoder in use (from the engine) */
+  decoder?: DecoderInfo;
+  /** diagnostics attached to the last error (what "Copy details" copies, with browser facts) */
+  errorDetails?: ErrorDetails;
+  /** the last diagnostics text built by "Copy details" */
+  lastDiagnostics?: string;
+  playing?: boolean;
 }
 
 export class App {
@@ -75,6 +88,8 @@ export class App {
   private exporting = false;
   private downloadUrl: string | null = null;
   private aspect = 16 / 9;
+  private errorDetails: ErrorDetails | null = null;
+  private uaData: Record<string, unknown> | null = null;
   readonly debug: DebugHook = { view: 'boot', planReady: false, exportState: 'idle', events: [] };
 
   async start() {
@@ -88,6 +103,7 @@ export class App {
       this.renderTimeline(); this.renderExportFacts();
     };
     window.addEventListener('beforeunload', e => { if (this.exporting) { e.preventDefault(); e.returnValue = ''; } });
+    void this.loadUaData();
     this.bindLanding();
     this.bindWorkspace();
     this.startWorkers();
@@ -122,7 +138,12 @@ export class App {
     this.engine.onerror = e => this.fail('The render engine crashed: ' + (e.message || 'unknown error'));
     const before = ($('cv-before') as HTMLCanvasElement).transferControlToOffscreen();
     const after = ($('cv-after') as HTMLCanvasElement).transferControlToOffscreen();
-    this.postEngine({ type: 'init', before, after }, [before, after]);
+    // test / support switches: ?sp_fault=hw-first (simulate a failing hardware decoder), ?sp_stall=3000 (watchdog ms)
+    const q = new URLSearchParams(location.search);
+    const debug: EngineDebug = {};
+    if (q.get('sp_fault')) debug.fault = q.get('sp_fault')!;
+    if (q.get('sp_stall')) debug.stallMs = Math.max(500, +q.get('sp_stall')! || 0);
+    this.postEngine({ type: 'init', before, after, debug }, [before, after]);
   }
 
   private postEngine(m: EngineIn, transfer: Transferable[] = []) { this.engine.postMessage(m, transfer); }
@@ -153,7 +174,7 @@ export class App {
         this.debug.clip = { ...this.debug.clip!, telemetry: m.summary };
         this.renderBadge();
         this.renderFacts();
-        this.requestPlan(true);
+        if (!c.decodeError) this.requestPlan(true);
         break;
       case 'plan': {
         if (m.id !== c.planId) return; // stale
@@ -170,7 +191,14 @@ export class App {
       }
       case 'error':
         this.log(`analysis error ${m.stage}: ${m.message}`);
-        if (m.stage === 'open') { this.fail(`Couldn’t read this file: ${m.message}`); this.status(null); }
+        if (m.stage === 'open') {
+          // DJI cameras write the file's index (moov) last: a copy that stopped early has none
+          const incomplete = /no moov|truncat|unexpected end|beyond the end/i.test(m.message);
+          this.fail(incomplete
+            ? `This file looks incomplete — it may not have finished copying from the card, or the recording was cut off (the camera writes the file’s index at the very end). Copy the clip from the SD card again. (${m.message})`
+            : `Couldn’t read this file: ${m.message}`, { stage: 'analysis-open', error: { name: 'Error', message: m.message } });
+          this.status(null);
+        }
         else if (m.stage === 'telemetry') {
           c.telError = m.message;
           this.renderBadge();
@@ -194,7 +222,11 @@ export class App {
         break;
       case 'opened': {
         const c = this.clip; if (!c) return;
-        this.log(`opened ${m.frames} frames, decoder ${m.decoder} hw=${m.hardware}`);
+        const d = m.decoder;
+        this.log(`opened ${m.frames} frames, decoder ${d.codec} ${d.variant} (${d.label}) sw=${d.software} fallback=${d.fallback} keyframes=${JSON.stringify(d.rap)} preflight=${d.preflight ? `${d.preflight.ms} ms ${d.preflight.tried.map(t => `${t.variant}:${t.ok ? 'ok' : 'fail'}`).join(',')}` : '-'}`);
+        c.decoder = d; this.debug.decoder = d;
+        c.engineNotes = m.notes;
+        if (d.note) this.toast(d.software ? 'Using software video decoding for this clip (slower) — details in the clip notes.' : d.note);
         c.frames = m.frames; c.fps = m.fps; c.duration = m.duration;
         c.inP = 0; c.outP = m.frames - 1;
         if (c.video) c.pts = Float64Array.from(c.video.cts).sort();
@@ -204,10 +236,29 @@ export class App {
         this.renderFacts();
         break;
       }
-      case 'open-error':
-        this.status(null);
-        this.fail(m.message);
+      case 'decoder': {
+        const c = this.clip; if (!c) return;
+        const was = c.decoder;
+        c.decoder = m.decoder; this.debug.decoder = m.decoder;
+        this.log(`decoder switched ${was?.variant ?? '?'} -> ${m.decoder.variant} (${m.decoder.label})`);
+        if (m.decoder.software && !was?.software) this.toast('The hardware video decoder failed — switched to software decoding (slower).');
+        this.renderFacts();
         break;
+      }
+      case 'open-error': {
+        this.status(null);
+        const c = this.clip;
+        if (c) {
+          c.decodeError = m.message;
+          clearTimeout(this.planTimer);
+          ($('btn-play') as HTMLButtonElement).disabled = true;
+          this.setPlanState('', false);
+          this.renderFacts();
+          this.updateExportButton();
+        }
+        this.fail(m.message, m.details ?? { stage: 'open' });
+        break;
+      }
       case 'frame': {
         const c = this.clip; if (!c) return;
         c.pres = m.pres;
@@ -218,6 +269,7 @@ export class App {
       }
       case 'playing':
         this.playing = m.playing;
+        this.debug.playing = m.playing;
         if (m.stats) { this.debug.playStats = m.stats; this.log(`play stopped: ${m.stats.drawn} drawn, ${m.stats.dropped} dropped in ${m.stats.seconds.toFixed(2)} s`); }
         $('btn-play').classList.toggle('is-playing', m.playing);
         $('btn-play').setAttribute('aria-label', m.playing ? 'Pause preview' : 'Play preview');
@@ -252,16 +304,17 @@ export class App {
         this.releaseWakeLock();
         document.title = 'Stillpoint — stabilize DJI footage in your browser';
         this.debug.exportState = m.cancelled ? 'idle' : 'error';
-        if (!m.cancelled) this.debug.error = m.message;
-        this.showCard(m.cancelled ? 'export' : 'error');
-        if (!m.cancelled) $('error-text').textContent = m.message; else this.toast('Export cancelled.');
+        if (!m.cancelled) this.fail(m.message, m.details ?? { stage: 'export' });
+        else { this.showCard('export'); this.toast('Export cancelled.'); }
         this.lockControls(false);
         this.updateExportButton();
         break;
       case 'error':
         this.log(`engine error: ${m.message}`);
-        this.toast(m.message);
         this.seekDone();
+        // decode failures come with diagnostics: show them in the error card (with "Copy details"), not a toast
+        if (m.details && !this.exporting) this.fail(m.message, m.details);
+        else this.toast(m.message);
         break;
     }
   }
@@ -329,6 +382,7 @@ export class App {
     this.debug.planReady = false;
     this.debug.exportState = 'idle';
     this.debug.result = undefined; this.debug.error = undefined; this.debug.progress = undefined;
+    this.debug.decoder = undefined; this.debug.errorDetails = undefined; this.errorDetails = null;
     this.playing = false;
     $('clip-name').textContent = file.name;
     $('clip-meta').innerHTML = '';
@@ -349,7 +403,7 @@ export class App {
 
   private requestPlan(immediate = false) {
     const c = this.clip;
-    if (!c || !c.tel) return;
+    if (!c || !c.tel || c.decodeError) return;
     clearTimeout(this.planTimer);
     if (c.tel.eisBaked) { this.setPlanState('Not available for this clip', false); this.status(null); return; }
     const go = () => {
@@ -509,12 +563,107 @@ export class App {
     (t as any)._timer = setTimeout(() => (t.hidden = true), 4200);
   }
 
-  private fail(msg: string) {
+  private fail(msg: string, details?: ErrorDetails) {
     this.debug.error = msg;
+    this.errorDetails = details ?? null;
+    this.debug.errorDetails = details;
     this.log('fail: ' + msg);
     if (this.debug.view !== 'work') { this.toast(msg); return; }
+    this.ensureErrorExtras();
     $('error-text').textContent = msg;
+    const copy = $('btn-error-copy') as HTMLButtonElement;
+    copy.hidden = !details;
+    copy.textContent = 'Copy details';
+    $('error-details-pre').hidden = true;
     this.showCard('error');
+  }
+
+  /** "Copy details" + a fallback text box in the error card (built here so the page markup stays unchanged). */
+  private ensureErrorExtras() {
+    if (document.getElementById('btn-error-copy')) return;
+    const card = $('card-error');
+    const ok = $('btn-error-ok');
+    const row = document.createElement('div');
+    row.className = 'error-actions';
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.id = 'btn-error-copy';
+    copy.className = 'btn btn-ghost';
+    copy.textContent = 'Copy details';
+    copy.title = 'Copies technical details (browser, graphics card, clip format, the decoder’s error) to send to whoever helps you';
+    copy.hidden = true;
+    ok.replaceWith(row);
+    ok.classList.remove('btn-block');
+    row.append(copy, ok);
+    const pre = document.createElement('pre');
+    pre.id = 'error-details-pre';
+    pre.className = 'error-details';
+    pre.hidden = true;
+    pre.tabIndex = 0;
+    card.append(pre);
+    copy.addEventListener('click', () => void this.copyDetails(copy));
+  }
+
+  private async loadUaData() {
+    try {
+      const ud = (navigator as any).userAgentData;
+      if (!ud) return;
+      this.uaData = { brands: ud.brands, mobile: ud.mobile, platform: ud.platform };
+      const hi = await ud.getHighEntropyValues?.(['platformVersion', 'architecture', 'bitness', 'model', 'fullVersionList']);
+      if (hi) this.uaData = { ...this.uaData, ...hi };
+    } catch { /* optional */ }
+  }
+
+  /** Everything someone helping remotely needs to know about a failure, as pretty JSON. */
+  diagnostics(): string {
+    const c = this.clip;
+    const nav = navigator as any;
+    const v = c?.video;
+    const out = {
+      app: 'Stillpoint web',
+      page: location.origin + location.pathname,
+      time: new Date().toISOString(),
+      browser: {
+        userAgent: navigator.userAgent, uaData: this.uaData ?? undefined, platform: navigator.platform, language: navigator.language,
+        cores: navigator.hardwareConcurrency, memoryGB: nav.deviceMemory, screen: `${screen.width}×${screen.height} @${window.devicePixelRatio}x`,
+      },
+      gpu: this.debug.gpu,
+      caps: this.caps,
+      clip: c ? {
+        name: c.file.name, bytes: c.file.size, codec: v?.codecString, width: v?.width, height: v?.height, frames: c.frames, fps: c.fps,
+        duration: c.duration, camera: c.tel?.camera, colr: v?.colr, samples: v?.sampleCount,
+      } : undefined,
+      decoder: c?.decoder,
+      error: { message: this.debug.error, details: this.errorDetails ?? undefined },
+      events: this.debug.events.slice(-30),
+    };
+    return JSON.stringify(out, (_k, val) => (val instanceof Float64Array || val instanceof Uint8Array || val instanceof Uint32Array ? `[${val.length} values]` : val), 2);
+  }
+
+  private async copyDetails(btn: HTMLButtonElement) {
+    const text = this.diagnostics();
+    this.debug.lastDiagnostics = text;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch { /* fall back below */ }
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.readOnly = true;
+      ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+      document.body.append(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+    }
+    const pre = $('error-details-pre');
+    if (!ok) {
+      pre.textContent = text;
+      pre.hidden = false;
+      const r = document.createRange(); r.selectNodeContents(pre);
+      const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r);
+    }
+    btn.textContent = ok ? 'Copied — paste it in a message' : 'Select the text below and copy it';
+    this.log(`copy details ${ok ? 'ok' : 'fallback'} (${text.length} chars)`);
+    setTimeout(() => { btn.textContent = 'Copy details'; }, 3000);
   }
 
   private showCard(which: 'export' | 'progress' | 'done' | 'error') {
@@ -572,6 +721,8 @@ export class App {
     if (c.fps) rows.push(['Frame rate', `${fmtFps(c.fps)} fps`]);
     if (c.frames) rows.push(['Length', `${fmtDuration(c.duration)} · ${c.frames.toLocaleString()} frames`]);
     if (v) rows.push(['Video', `${this.codecName(v)}${v.colr?.transfer === 18 ? ' · HLG' : v.colr?.transfer === 16 ? ' · PQ' : ''}`]);
+    if (c.decoder) rows.push(['Decoding', c.decoder.software ? 'Software · slower' : c.decoder.label.startsWith('hardware') ? 'Graphics card (hardware)' : 'Automatic']);
+    else if (c.decodeError) rows.push(['Decoding', 'Not possible on this computer']);
     rows.push(['Audio', c.audio ? `AAC · ${Math.round((c.audio.sampleRate ?? 48000) / 1000)} kHz${c.audio.channels === 2 ? ' stereo' : c.audio.channels === 1 ? ' mono' : ''}` : 'None']);
     if (t) {
       rows.push(['Gyro', t.imuRate > 0 ? `${fmtRate(t.imuRate)}${t.hasHighrate ? '' : ' (per-frame)'}` : 'None']);
@@ -582,6 +733,9 @@ export class App {
     $('facts').innerHTML = rows.map(([k, val]) => `<dt>${esc(k)}</dt><dd title="${esc(val)}">${esc(val)}</dd>`).join('');
 
     const w: string[] = [];
+    if (c.decodeError) w.push(`<li class="is-bad">${esc(c.decodeError)}</li>`);
+    for (const n of c.engineNotes ?? []) w.push(`<li>${esc(n)}</li>`);
+    if (c.decoder?.note) w.push(`<li class="is-info">${esc(c.decoder.note)}</li>`);
     if (c.telError) w.push(`<li class="is-bad">This file has no gyro data Stillpoint can use. It may be an edited or already-stabilized copy, or not from a DJI O3, O4 Pro or Osmo Action 4. Open the original MP4 from the camera’s card (recorded with EIS off).</li>`);
     if (t?.eisBaked) w.push('<li class="is-bad">This clip was recorded with in-camera stabilization (RockSteady / HorizonSteady) on. Its gyro no longer matches the picture, so it can’t be stabilized. Record with EIS off.</li>');
     else if (t && !t.hasHighrate && t.imuRate > 0) w.push('<li>Only per-frame attitude is stored in this clip (no high-rate gyro), so fast vibration and rolling-shutter jello can’t be fully removed. For the best result record 4:3 with EIS off.</li>');
@@ -644,12 +798,13 @@ export class App {
 
   private updateExportButton() {
     const c = this.clip;
-    const ok = !!c && !this.exporting && !!c.plan && c.appliedPlanId === c.planId && !!c.encoder?.codec && !c.tel?.eisBaked && !c.telError;
+    const ok = !!c && !this.exporting && !!c.plan && c.appliedPlanId === c.planId && !!c.encoder?.codec && !c.tel?.eisBaked && !c.telError && !c.decodeError && !!c.decoder;
     ($('btn-export') as HTMLButtonElement).disabled = !ok;
   }
 
   private lockControls(lock: boolean) {
     for (const id of ['in-smooth', 'in-fov', 'in-horizon', 'btn-play']) ($(id) as HTMLInputElement).disabled = lock;
+    if (!lock && (this.clip?.decodeError || !this.clip?.frames)) ($('btn-play') as HTMLButtonElement).disabled = true;
     for (const b of Array.from(document.querySelectorAll<HTMLButtonElement>('#seg-quality button, #seg-codec button'))) b.disabled = lock;
   }
 
@@ -683,7 +838,7 @@ export class App {
     this.seekBusy = true;
     this.postEngine({ type: 'seek', pres: p });
     clearTimeout(this.seekTimer);
-    this.seekTimer = window.setTimeout(() => this.seekDone(), 2000);
+    this.seekTimer = window.setTimeout(() => this.seekDone(), this.clip?.decoder?.software ? 6000 : 2500);
   }
 
   private seekDone() {

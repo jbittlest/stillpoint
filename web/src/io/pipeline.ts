@@ -1,14 +1,15 @@
 /**
  * The export pipeline: decode (WebCodecs) -> warp (WebGPU Warper) -> encode (WebCodecs) -> MP4 mux (mediabunny) with
  * AAC passthrough. Runs in the engine worker. Memory is bounded by construction:
- *   - SequentialDecoder holds <= maxFrames decoded frames and <= 4 chunks in the decoder,
+ *   - the frame source (a FrameStream: SequentialDecoder + fallback/recovery) holds <= maxFrames decoded frames and a
+ *     few chunks in the decoder; it delivers every frame of [first, last] exactly once, in order, or throws,
  *   - the encoder queue is capped (encodeQueueSize), and the muxer chain length is capped (writer.pending),
  *   - samples are read from the file in ~12 MB coalesced batches with one batch of read-ahead,
  *   - every VideoFrame (decoded, warped, re-stamped) is closed as soon as it has been submitted.
  */
 import type { Mp4Info, Mp4Track, Plan } from '../types';
 import type { WarperLike } from '../ui/contracts';
-import { FrameIndex, SequentialDecoder, type ReadSamples } from './decode';
+import type { DecodedFrame, FrameIndex, ReadSamples } from './decode';
 import type { EncoderChoice } from './encode';
 import { Mp4Writer, type AudioPassthrough, type OutputSink } from './mux';
 
@@ -46,7 +47,8 @@ export interface RenderJob {
   plan: Plan;
   warper: WarperLike;
   readSamples: ReadSamples;
-  decoderConfig: VideoDecoderConfig;
+  /** decoded source frames of pres range [first, last], in order, each exactly once (a DecoderSession FrameStream) */
+  frames: (first: number, last: number) => FrameSource;
   encoder: EncoderChoice;
   sink: OutputSink;
   /** presentation frame range, inclusive */
@@ -62,6 +64,11 @@ export interface RenderJob {
   previewEveryMs?: number;
   /** colour tags for the output (default: the source's, when SDR BT.709) */
   colorSpace?: VideoColorSpaceInit;
+}
+
+export interface FrameSource {
+  next(): Promise<DecodedFrame | null>;
+  close(): void;
 }
 
 /** plan record index for presentation frame pts t (nearest; plan.framePts ascending) */
@@ -140,8 +147,7 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
     }).catch(e => { encError ??= e; }).finally(() => { aBusy = false; });
   }
 
-  const [d0, d1] = index.decodeSpan(job.first, job.last);
-  const dec = new SequentialDecoder(file, video, index, job.readSamples, job.decoderConfig, d0, d1, { maxFrames: 5, maxDecodeQueue: 4 });
+  const dec = job.frames(job.first, job.last);
 
   const tStart = performance.now();
   let done = 0, lastPreview = 0, lastProgress = 0, fpsEma = 0, lastT = tStart, lastDone = 0;
@@ -172,10 +178,10 @@ export async function renderClip(job: RenderJob): Promise<RenderResult> {
     for (;;) {
       if (signal.aborted) throw abortError();
       let tA = performance.now();
-      const f = await dec.next();
+      const got = await dec.next();
       tm.waitDecode += performance.now() - tA;
-      if (!f) break;
-      const pres = index.presOfTimestamp(f.timestamp);
+      if (!got) break;
+      const { frame: f, pres } = got;
       if (pres < job.first || pres > job.last) { f.close(); continue; }
       const pts = index.pts[pres];
       const k = planIdx(pts);

@@ -361,7 +361,7 @@ footer a{color:var(--ink2)}
       <div class="cam reveal"><h3>Browsers</h3><div class="rate">WebGPU + WebCodecs</div>
         <ul><li>Use current Chrome or Edge on a desktop or laptop. Tested in Chrome on an Apple-silicon Mac.</li>
         <li>Safari 26 on a Mac has everything it needs but hasn't been tested yet. Firefox isn't supported.</li>
-        <li>O3 clips are H.264 and open almost anywhere. Osmo Action 4 and O4 Pro clips are HEVC (H.265) and need hardware HEVC decoding: any Apple-silicon Mac, and most recent Windows GPUs.</li>
+        <li>O3 clips (and O4 Pro clips recorded in H.264) open almost anywhere. If the graphics card can't decode 4K60 H.264, the app switches to the browser's software decoder: slower, but it works. Osmo Action 4 clips, and O4 Pro clips recorded in H.265, are HEVC and need hardware HEVC decoding: any Apple-silicon Mac, and most recent Windows GPUs.</li>
         <li>The app checks your browser when it opens and tells you what's missing.</li></ul></div>
     </div>
     <div class="grid3" style="margin-top:18px">

@@ -1,0 +1,15 @@
+{
+  "name": "stillpoint-web-robustness",
+  "private": true,
+  "type": "module",
+  "description": "Decoder failure-mode matrix for the Stillpoint web app (headless Chrome). Run from web/: npm --prefix test/robustness run <script>",
+  "scripts": {
+    "matrix": "node matrix.mjs --flags default,nohwdec --clips o3,oa4,o4p --strict",
+    "matrix:faults": "node matrix.mjs --faults hwlevel,hwinit,hwfail-late:45,pool:6 --clips o3,oa4 --strict-faults",
+    "matrix:dev": "node matrix.mjs --target dev --flags default,nohwdec --faults none,hwlevel,hwfail-late:45 --clips o3,oa4 --strict --strict-faults",
+    "matrix:full": "node matrix.mjs --probe --flags default,nohwdec,nohevc,nogpu --faults none --clips o3,oa4,o4p,nondji,o3-head,o3-trunc,o3-hole,oa4-trunc,oa4-hole",
+    "matrix:live": "node matrix.mjs --target https://jbittlest.github.io/stillpoint/app/ --faults none,hwlevel --clips o3",
+    "probe": "node matrix.mjs --probe --flags default,nohwdec,nohevc --steps load --clips o3",
+    "nal": "node nal-scan.mjs"
+  }
+}

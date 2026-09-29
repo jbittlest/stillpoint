@@ -10,12 +10,16 @@ export interface Caps {
   decodeHevc10: boolean;
   decodeHevc: boolean;
   decodeH264: boolean;
+  /** isConfigSupported() with prefer-hardware (diagnostics: a "yes" here doesn't guarantee the GPU can decode the clip) */
+  hwDecodeH264?: boolean;
+  hwDecodeHevc10?: boolean;
   encodeHevc: boolean;
   encodeH264: boolean;
   encodeAny: boolean;
   saveToDisk: boolean;
   opfs: boolean;
   browser: 'chrome' | 'edge' | 'safari' | 'firefox' | 'other';
+  platform?: 'mac' | 'windows' | 'linux' | 'chromeos' | 'android' | 'ios' | 'other';
   mobile: boolean;
 }
 
@@ -36,9 +40,19 @@ export function detectBrowser(): Caps['browser'] {
   return 'other';
 }
 
-async function dec(codec: string, w = 3840, h = 2160): Promise<boolean> {
+export function detectPlatform(ua = navigator.userAgent, platform = navigator.platform ?? ''): NonNullable<Caps['platform']> {
+  if (/Android/i.test(ua)) return 'android';
+  if (/iPhone|iPad|iPod/.test(ua) || (/Mac/.test(platform) && (navigator as any).maxTouchPoints > 1)) return 'ios';
+  if (/CrOS/.test(ua)) return 'chromeos';
+  if (/Win/i.test(platform) || /Windows/.test(ua)) return 'windows';
+  if (/Mac/i.test(platform) || /Mac OS X/.test(ua)) return 'mac';
+  if (/Linux/i.test(platform) || /Linux/.test(ua)) return 'linux';
+  return 'other';
+}
+
+async function dec(codec: string, w = 3840, h = 2160, modes: HardwareAcceleration[] = ['prefer-hardware', 'no-preference', 'prefer-software']): Promise<boolean> {
   if (typeof VideoDecoder === 'undefined') return false;
-  for (const hw of ['prefer-hardware', 'no-preference'] as HardwareAcceleration[]) {
+  for (const hw of modes) {
     try { if ((await VideoDecoder.isConfigSupported({ codec, codedWidth: w, codedHeight: h, hardwareAcceleration: hw })).supported) return true; } catch { /* next */ }
   }
   return false;
@@ -60,17 +74,20 @@ export async function detectCaps(): Promise<Caps> {
     webgpu = !!gpu && !!(await gpu.requestAdapter());
   } catch { webgpu = false; }
   const offscreen = typeof OffscreenCanvas !== 'undefined' && typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function' && typeof Worker !== 'undefined';
-  const [decodeHevc10, decodeHevc, decodeH264, encodeHevc, encodeH264, encodeAv1] = await Promise.all([
-    dec('hvc1.2.4.L153.B0'), dec('hvc1.1.6.L153.B0'), dec('avc1.640033'),
+  // avc1.640034 = H.264 High level 5.2, what DJI O3 / O4 Pro record at 4K60
+  const [decodeHevc10, decodeHevc, decodeH264, hwDecodeH264, hwDecodeHevc10, encodeHevc, encodeH264, encodeAv1] = await Promise.all([
+    dec('hvc1.2.4.L153.B0'), dec('hvc1.1.6.L153.B0'), dec('avc1.640034'),
+    dec('avc1.640034', 3840, 2160, ['prefer-hardware']), dec('hvc1.2.4.L153.B0', 3840, 2160, ['prefer-hardware']),
     enc('hvc1.1.6.L153.B0', { hevc: { format: 'hevc' } }), enc('avc1.640034', { avc: { format: 'avc' } }), enc('av01.0.13M.08', { hardwareAcceleration: 'no-preference' }),
   ]);
   const ua = navigator.userAgent;
   return {
-    webgpu, webcodecs, offscreen, decodeHevc10, decodeHevc, decodeH264, encodeHevc, encodeH264,
+    webgpu, webcodecs, offscreen, decodeHevc10, decodeHevc, decodeH264, hwDecodeH264, hwDecodeHevc10, encodeHevc, encodeH264,
     encodeAny: encodeHevc || encodeH264 || encodeAv1,
     saveToDisk: typeof (window as any).showSaveFilePicker === 'function',
     opfs: !!navigator.storage?.getDirectory,
     browser: detectBrowser(),
+    platform: detectPlatform(),
     mobile: /Android|iPhone|iPad|Mobile/i.test(ua),
   };
 }
@@ -98,7 +115,7 @@ export function verdict(c: Caps): Verdict {
     return { ok: false, partial: false, title: 'This browser can’t run Stillpoint yet', body };
   }
   const notes: string[] = [];
-  if (!c.decodeHevc10) notes.push('HEVC clips (Osmo Action 4, O4 Pro) won’t open here; H.264 clips (O3) will.');
+  if (!c.decodeHevc10) notes.push('This computer has no hardware HEVC (H.265) decoding in this browser, so HEVC clips (Osmo Action 4, or O4 Pro set to H.265) won’t open here; H.264 clips (O3, O4 Pro in H.264) will.');
   if (!c.encodeHevc && !c.encodeH264) notes.push('No hardware video encoder was found, so exports will be slow.');
   if (c.mobile) notes.push('Phones and tablets can run it, but 4K exports are much faster on a laptop or desktop.');
   if (notes.length) return { ok: true, partial: true, title: 'Heads up', body: notes.join(' ') };

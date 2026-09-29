@@ -1,7 +1,8 @@
 """WP-C tests: crop-constrained path optimizer (engine/stillpoint/smooth.py).
 
 Synthetic O3-like telemetry (KB4 lens, 3840x2160, 9.72 ms readout, 2 kHz orientation): a smooth
-intentional path + injected 3-40 Hz jitter + 360-degree barrel rolls peaking at 800 deg/s.
+intentional path + injected 3-40 Hz jitter + 360-degree barrel rolls peaking at 800 deg/s; 2-4 Hz roll rocking (e);
+fast 90-degree turns with 2-4 Hz shake (f).
 Set STILLPOINT_FAST=1 to skip the 23,500-frame runtime test.
 """
 import os
@@ -219,6 +220,7 @@ def test_c_zoom_piecewise_constant():
     assert ofx.max() > fx * 1.01                         # zoom was needed and used
     assert dz.max() * FPS <= prm.max_zoom_rate * 1.05    # rate limit (no breathing)
     assert big.sum() == 2 and nets[big][0] > 0 > nets[big][1]   # one ramp in, one ramp out
+    assert info['zoom_changes'] == int((np.abs(dzs) > 1e-4).sum()) and len(nets) <= 4   # counted; no breathing
     assert np.abs(nets[~big]).sum() < 0.005              # anything else is < 0.5% total (invisible)
     assert changing.mean() < 0.35
     t = tel.frame_t
@@ -269,6 +271,83 @@ def test_horizon_lock_no_crash_and_levels():
         return np.abs(np.einsum('kji,j->ki', quat_to_mat(V), g_w)[:, 0]).mean()
 
     assert gx(V1) < 0.7 * gx(V0)      # levels as far as the crop margin allows (M1: soft L2 term)
+
+
+# ----------------------------------------------------------------------------- (e) 2-4 Hz roll, fast turns
+
+
+def _band(Q, lo=2.0, hi=8.0):
+    """Band-passed body-frame integrated rotation of a quaternion path (F,3) rad."""
+    w = qlog(qmul(qconj(Q[:-1]), Q[1:]))
+    P = np.concatenate([np.zeros((1, 3)), np.cumsum(w, 0)])
+    return sosfiltfilt(butter(4, [lo, hi], 'bandpass', fs=FPS, output='sos'), P, axis=0)
+
+
+def _shake(freqs, rms_deg, axes=(0, 1, 2), seed=11):
+    def f(t):
+        rng = np.random.default_rng(seed)
+        j = np.zeros((len(t), 3))
+        for fr in freqs:
+            j[:, list(axes)] += np.sin(2 * np.pi * fr * t[:, None] + rng.uniform(0, 6.28, len(axes)))
+        sd = j.std(axis=0)
+        return j * np.where(sd > 0, np.deg2rad(rms_deg) / np.where(sd > 0, sd, 1.0), 0.0)
+    return f
+
+
+def test_e_roll_2_4hz_rejected_when_slack():
+    """Roll rocking at 2-4 Hz (0.5 deg rms, the residual the OA4 visual diagnosis flagged) on a gently wandering camera,
+    wide crop (60 % area: the path never needs the border): the virtual path must carry < 2 % of it, with no zoom
+    change and no crop violation."""
+    n = 1200
+    tel = make_tel(n, jit_rms_deg=0.0, extra_jitter=_shake((2.1, 2.7, 3.2, 3.8), 0.5, axes=(2,)), seed=3)
+    fx = fx_for_crop_area(tel.lens, tel.width, tel.height, OUT_W, OUT_H, 0.60)
+    V, ofx, info = optimize_path(tel, _qfn(tel), np.arange(n), OUT_W, OUT_H, SmoothParams(min_out_fx=fx),
+                                 return_info=True)
+    R = _qfn(tel)(tel.frame_t)
+    sl = slice(90, n - 90)
+    bv, br = _band(V, 2.0, 4.0)[sl], _band(R, 2.0, 4.0)[sl]
+    ratio = np.sqrt((bv[:, 2] ** 2).mean()) / np.sqrt((br[:, 2] ** 2).mean())
+    z = np.log(ofx / fx)
+    print(f'\n(e) 2-4 Hz roll: virtual/camera {100 * ratio:.2f}%, zoom changes {info["zoom_changes"]}, '
+          f'min crop slack {info["slack_min_px"].min():.1f}px')
+    assert ratio < 0.02
+    assert info['zoom_changes'] == int((np.abs(np.diff(z)) > 1e-4).sum()) == 0 and np.allclose(ofx, fx)
+    assert check_crop(tel, _qfn(tel), np.arange(n), V, ofx, OUT_W, OUT_H, 64, 0.0).max() <= 0.0
+
+
+def test_f_fast_turns_do_not_copy_shake():
+    """Two 90-degree yaw turns in 0.8 s (peak 225 deg/s) with 2-4 Hz shake (0.3 deg rms, all axes), 60 % crop.
+    The smooth path must lag/lead the camera by more than 6 deg there. M1 started the SQP at the camera and its trust
+    radii summed to 6.1 deg, so the path sat on that cap 130 px away from the crop border and copied 12 % of the
+    shake (8-12 % on DJI_0027 26-27 s); now ~2.6 % (warm start + per-frame trust radius: 4.7 %; + smoothed jerk L2
+    against riding the crop border: 2.6 %), still no crop violation and no zoom."""
+    n = 1200
+    t_turns, dur, turn = (6.0, 14.0), 0.8, np.deg2rad(90.0)
+    tel = make_tel(n, jit_rms_deg=0.0, seed=7)
+    t = tel.imu_t
+    yaw = 0.2 * np.sin(2 * np.pi * 0.05 * t)
+    for te in t_turns:
+        u = np.clip((t - te) / dur, 0, 1)
+        yaw += turn * (u - np.sin(2 * np.pi * u) / (2 * np.pi))
+    tel.imu_q = qmul(qexp(yaw[:, None] * np.eye(3)[1]), qexp(_shake((2.3, 2.9, 3.4, 3.9), 0.3, seed=7)(t)))
+    fx = fx_for_crop_area(tel.lens, tel.width, tel.height, OUT_W, OUT_H, 0.60)
+    V, ofx, info = optimize_path(tel, _qfn(tel), np.arange(n), OUT_W, OUT_H, SmoothParams(min_out_fx=fx),
+                                 return_info=True)
+    R = _qfn(tel)(tel.frame_t)
+    ft = tel.frame_t
+    m = np.zeros(n, bool)
+    for te in t_turns:
+        m |= (ft > te - 0.5) & (ft < te + dur + 0.5)
+    bv, br = _band(V), _band(R)
+    leak = np.sqrt((bv[m] ** 2).sum(1).mean()) / np.sqrt((br[m] ** 2).sum(1).mean())
+    phi = np.rad2deg(np.linalg.norm(qlog(qmul(qconj(R), V)), axis=1))
+    v0 = check_crop(tel, _qfn(tel), np.arange(n), V, ofx, OUT_W, OUT_H, 64, 0.0)
+    print(f'\n(f) fast turns: 2-8 Hz virtual/camera {100 * leak:.2f}%, max |V-camera| {phi.max():.1f} deg, '
+          f'max excursion {v0.max():+.2f}px, zoom changes {info["zoom_changes"]}, warm {info.get("warm")}')
+    assert leak < 0.04
+    assert phi.max() > 7.0
+    assert v0.max() <= 0.0
+    assert info['zoom_changes'] == 0
 
 
 # ----------------------------------------------------------------------------- (d) runtime

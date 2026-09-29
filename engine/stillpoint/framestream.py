@@ -119,6 +119,12 @@ class _AVLane:
         self.vs.thread_type = 'AUTO'
         if not self.hw:
             self.vs.thread_count = 4
+        else:
+            # VideoToolbox does the decoding; FFmpeg's default frame threading (cpu_count + 1 = 15 threads) only adds
+            # surfaces: 1.32 GB RSS per HEVC 10-bit 3840x2880 decoder process (0.54 GB for H.264 4K) vs 0.30 GB
+            # (0.18 GB) with one thread -- and one thread decodes FASTER (106 vs 78 fps HEVC, 96 vs 73 fps H.264;
+            # MEMORY role 2026-09-28). STILLPOINT_DECODER_THREADS overrides (0 = FFmpeg auto, the old behaviour).
+            self.vs.thread_count = max(0, int(os.environ.get('STILLPOINT_DECODER_THREADS', '1') or 1))
         self.tb = float(self.vs.time_base)
 
     def close(self):

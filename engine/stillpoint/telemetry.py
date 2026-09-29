@@ -13,14 +13,16 @@ Timing model (research/footage_o3.md §2.2, research/footage_oa4.md §5) -- all 
   The blocks tile one gap-free uniform series. We fit, per continuous segment,
         T_n - offset_n/rate = a + N_n*dt + beta*exposure_n          (N_n = global index of block n's first sample)
   O3: beta = 0.5 (DJI folds -exposure/2 into `offset`; fitted 0.49-0.52 on all O3 clips, residual 10-26 us rms).
-  O4 Pro (dvtm_O4P, seen in ~/Desktop/DJI_20260925*): same, fitted beta = 0.5001, residual 9 us rms.
+  O4 Pro (dvtm_O4P, seen in ~/Desktop/DJI_20260925*): same, fitted beta = 0.5001, residual 9 us rms. Its "2 kHz"
+       stream is a 1 kHz stream with every sample written twice (sample 2j+1 == sample 2j bit for bit): the parser
+       keeps one sample per pair, at the first copy's grid time + O4P_HOLD_SAMPLE_DELAY_S (vision-measured).
   OA4: beta = 0 (only 1/61 s clips carry the 1 kHz stream); if exposure varies, beta is fitted and applied relative
        to the 1/61 s calibration exposure. Unknown DJI products: beta fitted (snapped to 0.5 when within 0.05).
   IMU sample j        : a + j*dt                                    (UNIFORM grid -- no per-frame sawtooth)
   picture of frame n  : T_n - beta*exposure_n + c_pic               (centre row, mid-exposure)
                         c_pic = 0 (O3, verified by optical flow and Gyroflow render fits); OA4 1 kHz: -0.8 ms at 1/61 s
                         (0005/0006), +0.12 ms at exposures <= 4.6 ms (0012), linear in between (oa4_picture_offset),
-                        0 for O4 Pro (assumed = O3 air-unit family; unverified)
+                        0 for O4 Pro (verified by vision on 6 windows, together with the held-sample delay above)
   OA4 per-frame cam_quat sample time: T_n + 18 ms.
 Camera clock -> video timeline: affine per segment, least squares PTS_n ~ alpha + s*T_n (s ~ sensor_fps/container_fps;
 never n/fps). Affine keeps the IMU grid uniform. readout_s = readout_raw * s.
@@ -60,7 +62,8 @@ from .geom import Lens, mat_to_quat, qconj, qfix_sign, qlog, qmul, qnormalize, s
 from .types import Telemetry
 from . import video as _video
 
-PARSER_VERSION = 8                    # v8: OA4 exposure-dependent picture offset (short shutters)
+PARSER_VERSION = 9                    # v9: O4 Pro held (duplicated) 2 kHz samples -> 1 kHz at the measured time
+                                      # v8: OA4 exposure-dependent picture offset (short shutters)
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 M_CAM2BODY = np.array([[0.0, 0.0, 1.0],   # body x (forward) = cam z
@@ -101,6 +104,36 @@ OA4_CAM_QUAT_DELAY_S = 0.018          # per-frame cam_quat sampled at T_k + 18.0
 # exposures 2-4 ms, no exposure trend): median-residual estimator +9.6 ms, trimmed-RMS estimator +9.0 ms relative to
 # the 4:3 model -> use 18.0 - 9.3 = 8.7 ms (+-1 ms). Modelled as a shorter cam_quat delay so frame_t keeps T_k - 0.8 ms.
 OA4_CAM_QUAT_DELAY_16X9_S = 0.0087
+# DJI O4 Pro: the 2 kHz DeviceAttitude stream is a 1 kHz stream with every sample written twice (samples 2j and 2j+1
+# are bit-identical in every O4P clip: 0003 and 0004, 100 % of pairs, no phase slips). Interpolating the held series
+# gives a staircase (still for 0.5 ms, then double speed): a 0..0.5 ms sawtooth time error at 1 kHz (0.25 ms mean
+# lag) on every row and frame -- jitter and row wobble proportional to the angular rate. The parser keeps one sample
+# per pair at the first copy's grid time + O4P_HOLD_SAMPLE_DELAY_S. Measured by the 3-frame-delta track fit on the
+# ORIGINAL frames (6 x 12-s windows, 0003 @20/60/112 s + 0004 @45/88/177 s; median exposures 0.14-1.19 ms, 1-143
+# deg/s): offset of the de-duplicated series -0.138..-0.180 ms (mean -0.168, SD 0.016) at the metadata readout,
+# the same in every exposure tercile (no exposure term beyond the -e/2 already in `offset`: slope 0.00); readout
+# 15.31-15.63 ms (metadata 15.38 ms kept); top->bottom (reversed readout: +40-50 % cost); focal unobservable
+# (0.90-1.12, kept 1.0). The de-duplicated series fits better than the held one in every window (delta cost -0.1..
+# -9 %, the most in fast windows). Scripts: <support dir>/Stillpoint/scratch/o4timing (focus_o4.py).
+O4P_HOLD_SAMPLE_DELAY_S = 0.00017
+O4P_HOLD_MIN_FRAC = 0.4               # a stream is 'held' when >= this fraction of consecutive samples repeat exactly
+
+
+def dedup_held_samples(t: np.ndarray, q: np.ndarray, delay_s: float = 0.0) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Collapse runs of bit-identical consecutive samples (a lower-rate stream written at a higher rate) to one
+    sample each, at the run's first time + delay_s. Returns (t, q, info)."""
+    t = np.asarray(t, np.float64)
+    q = np.asarray(q)
+    if len(q) < 2:
+        return t, q, dict(held_frac=0.0, n_in=int(len(q)), n_out=int(len(q)))
+    same = np.all(q[1:] == q[:-1], axis=1)
+    first = np.r_[True, ~same]
+    runs = np.diff(np.r_[np.flatnonzero(first), len(q)])
+    info = dict(held_frac=float(same.mean()), n_in=int(len(q)), n_out=int(first.sum()),
+                run_lengths={int(u): int(c) for u, c in zip(*np.unique(runs, return_counts=True))}, delay_s=delay_s)
+    return t[first] + delay_s, q[first], info
+
+
 OA4_DBGI_EIS_DELAY_S = 0.0095         # dbgi 2.1.11.7.3 EIS-output attitude at T_k + 9.5 ms
 OA4_DBGI_PHYS_DELAY_S = 0.0105        # dbgi 2.1.11.7.4 physical attitude at T_k + 10.5 ms
 EIS_STATUS = {0: 'EIS_OFF', 1: 'EIS_ROCK_STEADY', 2: 'EIS_HORIZON_STEADY', 3: 'EIS_HYPER', 4: 'EIS_TRADEOFF',
@@ -727,9 +760,6 @@ def _parse(path: str, reader: str | None = None, dbgi: str | None = None, max_fr
     is_o3, is_oa4, is_o4p = _product_flags(clip)
     if not (is_o3 or is_oa4 or is_o4p):
         warn.append(f'unknown DJI product {product!r} ({proto}); generic DJI timing model (fitted beta, c_pic = 0)')
-    if is_o4p:
-        warn.append('DJI O4 Pro: timing model assumed from the O3 (beta fitted = 0.5, picture at frame_ts); '
-                    'axes/timing checked only by the WP-A smoke test')
     camera = (f'DJI O3 ({product.replace("DJI ", "")})' if is_o3 else 'DJI Osmo Action 4' if is_oa4 else
               'DJI O4 Pro' if is_o4p else product)
     W, H = info['width'], info['height']
@@ -865,6 +895,10 @@ def _parse(path: str, reader: str | None = None, dbgi: str | None = None, max_fr
     extra['timing'] = dict(beta_exposure=beta, beta_fitted=beta_fit, exposure_ref_s=exp_ref,
                            picture_offset_s=(float(np.median(c_pic)) if np.ndim(c_pic) else c_pic),
                            picture_offset_model=('oa4_exposure_v8' if (is_oa4 and have_hr) else 'constant'))
+    if is_o4p:
+        extra['timing']['o4p_hold_sample_delay_s'] = O4P_HOLD_SAMPLE_DELAY_S
+        extra['timing']['o4p_note'] = ('vision-verified on 6 windows of 0003/0004: picture = T - e/2, readout '
+                                       'top->bottom = metadata, 1 kHz held attitude de-duplicated')
     pic_cam = T - beta * (np.nan_to_num(exp) - exp_ref) + c_pic
     frame_t = np.empty(F)
     for si, (a, b) in enumerate(segs):
@@ -896,8 +930,20 @@ def _parse(path: str, reader: str | None = None, dbgi: str | None = None, max_fr
             nrm = np.linalg.norm(q_seg, axis=1)
             keep &= np.isfinite(nrm) & (np.abs(nrm - 1) < 0.05)
             q_seg, t_cam = q_seg[keep], t_cam[keep]
+            # held samples (O4 Pro: each 1 kHz sample written twice) -> one sample per run at its measured time
+            held = float(np.mean(np.all(q_seg[1:] == q_seg[:-1], axis=1))) if len(q_seg) > 1 else 0.0
+            hold_info = None
+            if held >= O4P_HOLD_MIN_FRAC:
+                if is_o4p:
+                    delay = O4P_HOLD_SAMPLE_DELAY_S
+                else:
+                    delay = 0.5 * gdt * (1.0 / max(1.0 - held, 1e-3) - 1.0)      # run midpoint (unmeasured)
+                    warn.append(f'segment {si}: {held * 100:.0f}% of attitude samples repeat (held stream); '
+                                f'de-duplicated at the run midpoint (+{delay * 1e3:.2f} ms, unverified)')
+                t_cam, q_seg, hold_info = dedup_held_samples(t_cam, q_seg, delay)
             grid_diag.append(dict(segment=si, a_s=ga, dt_s=gdt, resid_rms_s=float(np.nanstd(res)),
-                                  resid_max_s=float(np.nanmax(np.abs(res))), samples=int(len(q_seg))))
+                                  resid_max_s=float(np.nanmax(np.abs(res))), samples=int(len(q_seg)),
+                                  held_frac=held, hold_dedup=hold_info))
             if np.nanmax(np.abs(res)) > 0.45 / rate_nom:
                 warn.append(f'segment {si}: IMU blocks do not tile a uniform grid (max resid '
                             f'{np.nanmax(np.abs(res)) * 1e6:.0f} us) -- samples may be missing')

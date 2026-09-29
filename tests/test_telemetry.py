@@ -166,7 +166,7 @@ def test_oa4_highrate(name, F, N, Wdeg):
     np.testing.assert_allclose(L.k, OA4_K, atol=1e-6)
     assert abs(tel.readout_s - 11.0873e-3) < 5e-6
     np.testing.assert_allclose(tel.frame_t - tel.frame_pts, -0.8e-3, atol=20e-6)   # T_k - 0.8 ms
-    assert_covers_rows(tel, edge=1)
+    assert_covers_rows(tel, edge=2)          # the truncated last block is dropped (as before)
     # gravity re-levelling: constant world rotation of the 1 kHz stream, then agreement with the accelerometer
     assert abs(tel.extra['gravity_W_deg'] - Wdeg) < 1.0
     assert tel.extra['gravity_W_spread_deg']['p95'] < 1.0
@@ -316,3 +316,44 @@ def test_oa4_picture_offset_model():
     np.testing.assert_allclose(c[:3], 0.00012, atol=1e-9)
     np.testing.assert_allclose(c[4:], -0.0008, atol=1e-9)        # 1/61 s, longer, unknown -> the old constant
     assert c[2] > c[3] > c[4]
+
+
+# ----------------------------------------------------------------------------------------------- O4 Pro
+
+
+def test_dedup_held_samples_synthetic():
+    """A 1 kHz stream written twice at 2 kHz collapses to 1 kHz at first-copy time + delay; runs of any length."""
+    from stillpoint.telemetry import dedup_held_samples
+    t = np.arange(10) * 0.0005
+    q = np.repeat(np.eye(4)[[0, 1, 2, 3, 0]], 2, axis=0)
+    t2, q2, info = dedup_held_samples(t, q, 0.00017)
+    np.testing.assert_allclose(t2, np.arange(5) * 0.001 + 0.00017)
+    assert np.array_equal(q2, np.eye(4)[[0, 1, 2, 3, 0]])
+    assert abs(info['held_frac'] - 5 / 9) < 1e-12 and info['run_lengths'] == {2: 5}
+    t3, q3, _ = dedup_held_samples(t[:5], np.eye(4)[[0, 0, 0, 1, 2]])
+    np.testing.assert_allclose(t3, [0.0, 0.0015, 0.002])
+
+
+def test_o4p_held_stream_is_deduplicated():
+    """DJI O4 Pro: the '2 kHz' attitude is 1 kHz with every sample written twice. The parser must return the unique
+    1 kHz samples on a uniform grid, shifted by the vision-measured O4P_HOLD_SAMPLE_DELAY_S, with the O3-family
+    picture model (beta 0.5, c_pic 0) and the metadata readout."""
+    from eval.footage import BASE
+    from stillpoint.telemetry import O4P_HOLD_SAMPLE_DELAY_S
+    p = os.path.join(BASE, 'DJI_20260925151512_0004_D.MP4')
+    if not os.path.exists(p):
+        pytest.skip(f'missing clip {p}')
+    tel = load_telemetry(p, cache_dir=None)
+    assert tel.camera == 'DJI O4 Pro' and tel.has_highrate
+    assert abs(tel.imu_rate - 1000.0) < 0.01
+    assert not np.any(np.all(tel.imu_q[1:] == tel.imu_q[:-1], axis=1)), 'held duplicates left in the series'
+    assert_uniform(tel.imu_t, 0.001)
+    g = [d for d in tel.extra['imu_grid'] if 'hold_dedup' in d][0]
+    assert g['held_frac'] > 0.49 and g['hold_dedup']['delay_s'] == O4P_HOLD_SAMPLE_DELAY_S
+    # first unique sample sits at the fitted 2 kHz grid origin + the delay (video timeline, scale ~1)
+    m = tel.extra['segment_time_maps'][0]
+    np.testing.assert_allclose(tel.imu_t[0], m['offset'] + m['scale'] * (g['a_s'] + O4P_HOLD_SAMPLE_DELAY_S),
+                               atol=2e-6)
+    assert tel.extra['timing']['beta_exposure'] == 0.5 and tel.extra['timing']['picture_offset_s'] == 0.0
+    assert abs(tel.readout_s - 0.015384) < 1e-4
+    assert_covers_rows(tel, edge=2)          # the truncated last block is dropped (as before)

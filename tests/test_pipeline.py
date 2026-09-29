@@ -48,6 +48,22 @@ def test_residual_stats_units_and_gate():
     assert _score(st) > _score(st0)
 
 
+def test_loop_off_cameras():
+    """Gate v4: the closed loop is capped (loop_iters_oa4 folds, no open-loop pass) for the high-rate in-camera
+    attitude of the Osmo Action 4 and the O4 Pro; the O3 and low-rate clips keep the loop."""
+    from types import SimpleNamespace as NS
+    from stillpoint.pipeline import loop_off_camera
+    prm = AnalyzeParams()
+    assert loop_off_camera(NS(has_highrate=True, camera='DJI O4 Pro'), prm)
+    assert loop_off_camera(NS(has_highrate=True, camera='DJI Osmo Action 4'), prm)
+    assert not loop_off_camera(NS(has_highrate=True, camera='DJI O3 (FC8383)'), prm)
+    assert not loop_off_camera(NS(has_highrate=False, camera='DJI Osmo Action 4'), prm)      # 60 Hz cam_quat clips
+    assert not loop_off_camera(NS(has_highrate=True, camera='DJI O4 Pro'), AnalyzeParams(loop_iters_oa4=-1))
+    assert not loop_off_camera(NS(has_highrate=True, camera='DJI O4 Pro'), AnalyzeParams(closed_loop_iters=0))
+    assert not loop_off_camera(NS(has_highrate=True, camera='DJI O4 Pro'),
+                               AnalyzeParams(loop_off_cameras=('Osmo Action 4',)))
+
+
 def test_window_hf_and_mask():
     fs, F = 59.94, 600
     t = np.arange(F) / fs

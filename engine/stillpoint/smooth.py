@@ -11,6 +11,7 @@ V = V⁰·Exp(delta), zeta = zeta⁰ + dzeta and solves ONE sparse QP (Clarabel)
 
   objective (all terms in OUTPUT pixels, f = min_out_fx px/rad):
       w_acc_l1·Σ|a_t|₁ + w_jerk_l1·Σ|j_t|₁ + w_acc_l2·Σ|a_t|² + w_vel_l2·Σ|w_t|²    (virtual motion)
+    + w_jerk_l2·Σ|S²j_t|²             (S = 2-tap average: an ~omega^6 penalty on 2-8 Hz, well conditioned)
     + w_fidelity·Σ|f·phi_t|²                                                      (weak proximity)
     + w_horizon·Σ(f·g_x,t)²                                (horizon lock, gravity x in virtual cam)
     + zoom: w_zoom·Σzeta + w_zoom_rate_l1·Σ|Δzeta|₁ + w_zoom_acc_l2·Σ(Δ²zeta)²  (piecewise-constant)
@@ -29,6 +30,12 @@ V = V⁰·Exp(delta), zeta = zeta⁰ + dzeta and solves ONE sparse QP (Clarabel)
 
 Units in the QP are scaled: rotation variables in output px (u = f·delta), zoom in px of border
 motion (z = Z·dzeta, Z = output half-diagonal), so every weight is "per output pixel".
+
+Start and trust region (2026-09-28): the SQP starts from a crop-feasible zero-phase low-pass of the camera path
+(_warm_start), not from the camera, and the per-iteration trust radius is per frame (the schedule near the crop
+border, a fraction of the distance to it elsewhere). Starting at the camera, the radii (0.06+0.03+0.012+0.005 rad)
+capped |V - camera| at 6.1 deg per axis; in fast moves the path sat on that cap far from any crop border and copied
+the camera's 2-4 Hz shake (DJI_20260927091931_0012 365 s: 11.9 px of 2-8 Hz; DJI_0027 26-27 s: 1.4 px).
 """
 from __future__ import annotations
 
@@ -74,6 +81,12 @@ class SmoothParams:
     sqp_iters: int = 4
     trust_rad: tuple = (0.06, 0.03, 0.012, 0.005)          # per-iteration |delta|_inf bound [rad]
     trust_zoom: tuple = (0.25, 0.08, 0.03, 0.01)           # per-iteration |dzeta| bound
+    trust_far: tuple = (0.35, 0.2, 0.08, 0.03)             # per-iteration cap of the per-frame radius of frames far
+                                                           # from the crop border (fraction-to-the-boundary, below)
+    trust_frac: float = 0.5             # far frames may move this fraction of their (linearized) distance to the crop
+                                        # border per iteration. With one global radius, trust_rad summed to 6.1 deg,
+                                        # which capped |V - camera| per axis: in fast FPV moves (250-350 deg/s) the path
+                                        # sat on that cap and followed the camera's 2-8 Hz shake (DJI_0027 26-27 s: 1.4 px)
     repair_iters: int = 3               # extra iterations if the exact check still finds violations
     viol_tol_px: float = 0.25           # ... larger than this (source px, beyond margin_px)
     samples_long: int = 3               # interior border samples per long edge
@@ -90,17 +103,27 @@ class SmoothParams:
     w_jerk_l1: float = 10.0
     w_acc_l2: Optional[float] = None    # L2 on acceleration: the main 'smooth ease-in/out' term (tuned
                                         # on DJI_0025: 30 cuts calm >2 Hz path content 0.09 -> 0.02 px)
-    w_jerk_l2: float = 0.0
+    w_jerk_l2: float = 1000.0           # L2 on (smoothed) jerk: weighs 2-8 Hz path motion ~w*omega^6 vs LF, so a path
+                                        # pressed against the crop border no longer copies the camera's shake along it
+                                        # (DJI_0034 23 s: 0.93 -> 0.41 px of 2-8 Hz; +0-2 IPM iterations)
+    jerk_l2_smooth: int = 2             # 2-tap velocity averages applied inside the jerk L2 term (conditioning)
     w_vel_l2: Optional[float] = None
     w_fidelity: Optional[float] = None
     w_horizon: float = 50.0
-    w_zoom: float = 20.0                # per unit log-zoom per frame (prefer wide)
-    w_zoom_rate_l1: float = 2000.0      # per unit |Δ log-zoom| -> piecewise-constant zoom
+    w_zoom: float = 200.0               # per unit log-zoom per frame (prefer wide). 10x the M1 value: once the path may
+                                        # use the whole crop (warm start), 20/2000 zoomed DJI_0027 26 % of the time
+                                        # (max 1.24x, was 12 % / 1.13x); 200/20000: 4 % / 1.10x, 0012 max 1.01x
+    w_zoom_rate_l1: float = 20000.0     # per unit |Δ log-zoom| -> piecewise-constant zoom
     w_zoom_acc_l2: float = 2e5          # rounds the corners of zoom ramps
     w_crop_slack: float = 1e4           # per source px of crop violation per frame (exact penalty)
     prox: float = 1e-3                  # SQP proximal weight on the step (px^-2): picks the minimal step
                                         # on the flat optimal faces of the L1 objective (no wandering)
     axis_w: tuple = (1.0, 1.0, 1.0)     # (pitch x, yaw y, roll z) weights on motion terms
+    # --- warm start: the SQP starts from a crop-feasible low-passed camera path instead of the camera itself
+    warm_start: bool = True
+    warm_fc: float = 0.5                # [Hz] zero-phase low-pass of the camera path used as the start
+    warm_alphas: tuple = (1.0, 0.75, 0.5, 0.25)   # tried blends camera -> low-pass (largest crop-feasible one per frame)
+    warm_erode_s: float = 0.4           # alpha is eroded + box-averaged over +-this (stays <= the feasible alpha)
     verbose: bool = False
     cancel: Optional[Callable[[], bool]] = None      # polled per SQP iteration and per solved window;
                                                      # True -> InterruptedError (analysis cancel <= ~1 s)
@@ -360,8 +383,19 @@ def _solve_window(job: dict) -> dict:
     Puu = 2.0 * mu_a * (Aop.T @ Aop) + 2.0 * mu_v * (Wop.T @ Wop)
     qu = 2.0 * mu_a * (Aop.T @ a0) + 2.0 * mu_v * (Wop.T @ w0)
     if mu_j > 0:
-        Puu = Puu + 2.0 * mu_j * (Jop.T @ Jop)
-        qu = qu + 2.0 * mu_j * (Jop.T @ j0)
+        # jerk L2 on a 2-tap-averaged velocity (x jerk_l2_smooth): same weight at 2-8 Hz, but the Nyquist gain of
+        # the 3rd difference (64 -> 2.2 with 2 averages) no longer blows up the KKT condition number (plain Jop:
+        # 25 -> 100 IPM iterations at w=1000)
+        Js, js0 = Jop, j0
+        for _ in range(int(job.get('jerk_l2_smooth', 2))):
+            m_ = Js.shape[0] // 3
+            if m_ < 2:
+                break
+            Sm = sp.kron(sp.diags([np.full(m_ - 1, 0.5), np.full(m_ - 1, 0.5)], [0, 1], shape=(m_ - 1, m_)),
+                         sp.identity(3), format='csr')
+            Js, js0 = (Sm @ Js).tocsr(), Sm @ js0
+        Puu = Puu + 2.0 * mu_j * (Js.T @ Js)
+        qu = qu + 2.0 * mu_j * (Js.T @ js0)
     B = _jr_inv(job['phi0'])          # phi_new ≈ phi0 + B delta
     BtB = np.einsum('kji,kjl->kil', B, B)
     Bt_phi = np.einsum('kji,kj->ki', B, f * job['phi0'])
@@ -421,11 +455,12 @@ def _solve_window(job: dict) -> dict:
     # small and the exact post-check + repair iterations catch anything the pruning missed)
     trf = job.get('tr_frames')
     tr_idx = np.arange(nu) if trf is None else (3 * np.asarray(trf)[:, None] + np.arange(3)[None, :]).ravel()
+    tr_u = np.repeat(np.broadcast_to(np.asarray(job['tr'], dtype=np.float64), (Fw,)), 3)   # per-frame radius [rad]
     if len(tr_idx):
         Iu = sp.csr_matrix((np.ones(len(tr_idx)), (np.arange(len(tr_idx)), tr_idx)), shape=(len(tr_idx), nu))
-        tr_px = f * job['tr']
-        add([(off_u, Iu)], np.full(len(tr_idx), tr_px))
-        add([(off_u, -Iu)], np.full(len(tr_idx), tr_px))
+        tr_px = f * tr_u[tr_idx]
+        add([(off_u, Iu)], tr_px)
+        add([(off_u, -Iu)], tr_px)
     q = np.zeros(nvar)
     q[off_u:off_u + nu] = qu
     q[off_sa:off_sa + na] = job['w_acc_l1']
@@ -499,7 +534,8 @@ def _solve_window(job: dict) -> dict:
         ok = False
         delta, dz, sc = np.zeros((Fw, 3)), np.zeros(Fw), np.zeros(Fw)
     # enforce the trust region exactly (IPM tolerance)
-    delta = np.clip(delta, -job['tr'], job['tr'])
+    trk = tr_u.reshape(Fw, 3)
+    delta = np.clip(delta, -trk, trk)
     return dict(delta=delta, dz=dz, slack=sc, status=status, ok=ok, iters=sol.iterations,
                 build_s=t1 - t0, solve_s=t2 - t1, n_rows=A.shape[0], n_var=nvar, n_crop=nc)
 
@@ -514,8 +550,12 @@ def _objective(V, zeta, R, f, Zs, prm, wfid, wvel, g_w=None) -> dict:
     a = np.diff(w, axis=0)
     j = np.diff(a, axis=0)
     phi = qlog(qmul(qconj(R), V))
+    js = j
+    for _ in range(int(prm.jerk_l2_smooth)):
+        if len(js) > 1:
+            js = 0.5 * (js[:-1] + js[1:])
     o = dict(acc_l1=prm.w_acc_l1 * np.abs(a).sum(), jerk_l1=prm.w_jerk_l1 * np.abs(j).sum(),
-             acc_l2=prm.acc_l2() * (a * a).sum(), jerk_l2=prm.w_jerk_l2 * (j * j).sum(), vel_l2=wvel * (w * w).sum(), fid=wfid * ((f * phi) ** 2).sum())
+             acc_l2=prm.acc_l2() * (a * a).sum(), jerk_l2=prm.w_jerk_l2 * (js * js).sum(), vel_l2=wvel * (w * w).sum(), fid=wfid * ((f * phi) ** 2).sum())
     if g_w is not None and prm.w_horizon > 0:
         g = np.einsum('kji,kj->ki', quat_to_mat(V), g_w)
         o['horizon'] = prm.w_horizon * ((f * g[:, 0]) ** 2).sum()
@@ -524,6 +564,56 @@ def _objective(V, zeta, R, f, Zs, prm, wfid, wvel, g_w=None) -> dict:
         prm.w_zoom_acc_l2 / Zs ** 2 * (np.diff(zp, 2) ** 2).sum()
     o['total'] = float(sum(o.values()))
     return o
+
+
+def _lowpass_path(R: np.ndarray, fs: float, fc: float) -> np.ndarray:
+    """Zero-phase low-pass of an orientation sequence (F,4): the body-frame integrated rotation P is filtered and the
+    camera is rotated back by its high-pass part, R_lp = R * Exp(-(P - LP(P))) (exact to first order in the removed
+    part; only used as the SQP's starting point)."""
+    from scipy.signal import butter, sosfiltfilt
+    F = len(R)
+    if F < 16 or fc <= 0 or fc >= 0.45 * fs:
+        return R.copy()
+    w = qlog(qmul(qconj(R[:-1]), R[1:]))
+    P = np.concatenate([np.zeros((1, 3)), np.cumsum(w, 0)])
+    sos = butter(2, fc, 'lowpass', fs=fs, output='sos')
+    h = P - sosfiltfilt(sos, P, axis=0, padtype='odd', padlen=min(F - 1, int(3 * fs / fc)))
+    return qnormalize(qmul(R, qexp(-h)))
+
+
+def _warm_start(R, groups, fps, prm, q_cam_fn, ft, fx0, pts, out_w, out_h, lens, readout, H, lo, hi):
+    """SQP start: per frame the largest blend alpha (of warm_alphas, else 0) from the camera R toward its low-passed
+    path whose output border maps inside the crop (exact RS-aware mapping), eroded then box-averaged over
+    +-warm_erode_s (the average of an eroded sequence never exceeds the original, so a feasible alpha stays feasible
+    up to the blend's non-monotonicity, which the SQP's exact check and repair iterations absorb).
+    Why: the trust radii sum to ~6 deg, so an SQP started at the camera cannot move farther than that from it; in
+    fast moves the path sat on that cap and copied the camera's 2-8 Hz shake. From a smooth start the cap is
+    relative to a smooth path."""
+    F = len(R)
+    Rl = R.copy()
+    for (a, b) in groups:
+        if b - a >= 16:
+            Rl[a:b] = _lowpass_path(R[a:b], fps, prm.warm_fc)
+    d = qlog(qmul(qconj(R), Rl))                           # (F,3) camera -> low-passed
+    fo = np.full(F, fx0)
+    alpha = np.zeros(F)
+    for al in sorted(prm.warm_alphas):
+        V = qmul(R, qexp(al * d))
+        p = map_output_points(q_cam_fn, ft, V, fo, pts, out_w, out_h, lens, readout, H, prm.rs_iters)
+        ok = (np.maximum(lo - p, p - hi).max(axis=-1).max(axis=1) <= -1.0)
+        alpha = np.where(ok, al, alpha)
+    n = max(1, int(round(prm.warm_erode_s * fps)))
+    from scipy.ndimage import minimum_filter1d, uniform_filter1d
+    a_s = np.zeros(F)
+    for (a, b) in groups:
+        if b - a < 1:
+            continue
+        e = minimum_filter1d(alpha[a:b], 2 * n + 1, mode='nearest')
+        a_s[a:b] = np.minimum(uniform_filter1d(e, 2 * n + 1, mode='nearest'), alpha[a:b])
+    V = qnormalize(qmul(R, qexp(a_s[:, None] * d)))
+    dev = np.rad2deg(np.linalg.norm(d, axis=1))
+    return V, dict(mean_alpha=float(a_s.mean()), frac_full=float((a_s >= 0.999).mean()),
+                   lp_dev_p99_deg=float(np.percentile(dev, 99)) if F else 0.0)
 
 
 def _groups(tel, frame_ids: np.ndarray) -> list:
@@ -613,6 +703,9 @@ def optimize_path(tel, q_cam_fn: Callable[[np.ndarray], np.ndarray], frame_ids: 
         wins += [(a, b) + w for w in _windows(a, b, core, prm.overlap)]
 
     V = R.copy()
+    if prm.warm_start:
+        V, info['warm'] = _warm_start(R, groups, fps, prm, q_cam_fn, ft, fx0, pts, out_w, out_h, lens, readout, H,
+                                      lo, hi)
     zeta = np.zeros(F)
     trs = list(prm.trust_rad)
     trzs = list(prm.trust_zoom)
@@ -654,7 +747,15 @@ def optimize_path(tel, q_cam_fn: Callable[[np.ndarray], np.ndarray], frame_ids: 
         slack = np.stack([p[..., 0] - lo[0], hi[0] - p[..., 0], p[..., 1] - lo[1], hi[1] - p[..., 1]], -1)  # (F,S,4)
         coef = np.stack([-Gd[..., 0, :], Gd[..., 0, :], -Gd[..., 1, :], Gd[..., 1, :]], -2)            # (F,S,4,3)
         coefz = np.stack([-Gz[..., 0], Gz[..., 0], -Gz[..., 1], Gz[..., 1]], -1)                       # (F,S,4)
-        reach = tr * np.abs(coef).sum(-1) + (trz * np.abs(coefz) if zoom else 0.0) + 2.0
+        # per-frame trust radius: near the crop border the schedule `tr` (linearization accuracy of the crop rows);
+        # far from it a fraction of the first-order distance to the border (no crop row of the frame can become
+        # active, so none is needed), capped by trust_far. The radii never sum to a hard cap on |V - camera|.
+        csum = np.abs(coef).sum(-1)                                                                    # (F,S,4)
+        zr = (trz * np.abs(coefz) if zoom else 0.0)
+        tfar = prm.trust_far[min(it, len(prm.trust_far) - 1)] if prm.trust_far else tr
+        r_free = ((slack - 2.0 - zr) / np.maximum(csum, 1e-9)).min(axis=(1, 2))                         # (F,)
+        tr_k = np.clip(float(prm.trust_frac) * r_free, tr, max(tr, tfar))
+        reach = tr_k[:, None, None] * csum + zr + 2.0
         kk, ss, bb = np.nonzero(slack < reach)
         crop_k_all = kk
         crop_c_all = coef[kk, ss, bb]
@@ -667,9 +768,9 @@ def optimize_path(tel, q_cam_fn: Callable[[np.ndarray], np.ndarray], frame_ids: 
             sel = (crop_k_all >= wa) & (crop_k_all < wb)
             jobs.append(dict(
                 n=wb - wa, f=f, Zs=Zs, axis_w=prm.axis_w, zoom=zoom, x=xrel[wa:wb - 1], phi0=phi0[wa:wb],
-                zeta0=zeta[wa:wb], zeta_max=zeta_max, trz=trz, zrate=prm.max_zoom_rate / fps, tr=tr,
+                zeta0=zeta[wa:wb], zeta_max=zeta_max, trz=trz, zrate=prm.max_zoom_rate / fps, tr=tr_k[wa:wb],
                 g0=None if g0 is None else g0[wa:wb],
-                w_acc_l1=prm.w_acc_l1, w_jerk_l1=prm.w_jerk_l1, w_acc_l2=wacc, w_vel_l2=wvel, w_jerk_l2=prm.w_jerk_l2,
+                w_acc_l1=prm.w_acc_l1, w_jerk_l1=prm.w_jerk_l1, w_acc_l2=wacc, w_vel_l2=wvel, w_jerk_l2=prm.w_jerk_l2, jerk_l2_smooth=prm.jerk_l2_smooth,
                 w_fid=wfid, w_hor=prm.w_horizon if g0 is not None else 0.0, w_zoom=prm.w_zoom,
                 w_zrate=prm.w_zoom_rate_l1, w_zacc=prm.w_zoom_acc_l2, w_crop=prm.w_crop_slack, prox=prm.prox,
                 zoom_knot=prm.zoom_knot, crop_k=crop_k_all[sel] - wa, crop_c=crop_c_all[sel],
@@ -716,7 +817,10 @@ def optimize_path(tel, q_cam_fn: Callable[[np.ndarray], np.ndarray], frame_ids: 
         dz[good] /= wsum[good]
         V = qnormalize(qmul(V, qexp(delta)))
         zeta = np.clip(zeta + dz, 0.0, zeta_max)
-        rec = dict(it=it, tr=tr, obj=round(_objective(V, zeta, R, f, Zs, prm, wfid, wvel, g_w)['total'], 2),
+        sat = np.zeros(F, dtype=bool)                   # frames whose step hit their trust radius (not converged)
+        for (ga, gb, wa, wb, ca, cb), r in zip(wins, res):
+            sat[ca:cb] |= (np.abs(r['delta'][ca - wa:cb - wa]) >= 0.999 * tr_k[ca:cb, None]).any(1)
+        rec = dict(it=it, tr=tr, tr_far_frac=float((tr_k > tr * (1 + 1e-9)).mean()), n_sat=int(sat.sum()), obj=round(_objective(V, zeta, R, f, Zs, prm, wfid, wvel, g_w)['total'], 2),
                    lin_s=round(t_lin, 3), solve_s=round(t_solve, 3), n_crop_rows=int(len(crop_k_all)),
                    max_step_deg=float(np.rad2deg(np.abs(delta).max())),
                    step_frame=int(np.abs(delta).max(1).argmax()), max_slack=float(slack_c.max()),

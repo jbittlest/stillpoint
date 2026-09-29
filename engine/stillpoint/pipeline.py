@@ -16,11 +16,22 @@ analyze(video, out_dir, params, progress=None, cancel=None):
 render(video, plan_path, out_path, ...): app/renderer/.build/sprender
 
 Resources (ENGINE v3): no whole-clip frame cache any more. Every pass streams exactly the frames it needs through
-a bounded FrameStream (parallel ffmpeg VideoToolbox decoders, <= lanes*block+64 frames buffered: ~270-360 MB for
-any clip length, no disk); previews are rendered on the GPU with the shared Metal kernel; residuals are measured
-in a process pool whose workers exit when this process dies. Temporary files (only the quality pass's bounded
-window files) live in a job dir under $STILLPOINT_WORK_DIR (default ~/Library/Application Support/Stillpoint/work),
-removed on exit / error / cancel / SIGTERM (stale ones from hard kills are swept by the next job).
+a bounded FrameStream (persistent VideoToolbox decoder processes, a bounded reorder buffer, no disk); previews are
+rendered on the GPU with the shared Metal kernel; residuals are measured in a process pool whose workers exit when
+this process dies. Temporary files (only the quality pass's bounded window files) live in a job dir under
+$STILLPOINT_WORK_DIR (default ~/Library/Application Support/Stillpoint/work), removed on exit / error / cancel /
+SIGTERM (stale ones from hard kills are swept by the next job).
+
+Memory (MEMORY role, 2026-09-28): the whole process group (this process + decoders + measurement workers + the
+path-solver child) is sized to AnalyzeParams.mem_budget_gb (4.5 GB; also capped by the RAM the system has
+available) by plan_resources(): 2 decoder lanes, a ~250-frame reorder buffer, a 16-deep preview prefetch, and a
+worker count from a measured per-process model (MEM_MODEL) for the clip's source/analysis resolution and length
+(measurement pools <= max_workers_measure = 6: the passes saturate there). Workers run with macOS malloc's
+large-block cache off (worker_malloc_env). Decoder processes use one FFmpeg thread (framestream.py). Long clips
+(>= path_proc_frames) solve the camera path in a short-lived child process (the solver's whole-clip arrays and
+Clarabel's KKT factors are freed with it: in-process, macOS malloc kept ~1.3 GB of freed pages resident after one
+30k-frame solve), with bounded QP windows (smooth_window). report.json['resources'] has the plan and the measured
+process-group RSS (1-s samples, peak stage). Before: 6.1 GB (O3 DJI_0034, 6 workers), 7.4 GB (OA4 0013 8.4 min).
 """
 from __future__ import annotations
 
@@ -95,7 +106,13 @@ class AnalyzeParams:
                                          # loop off vs on: HF 0.25/0.52/1.20 vs 0.28/0.65/1.19 px, 8-30 Hz 0.049/0.101/
                                          # 0.081 vs 0.048/0.101/0.106, calm 0.109 vs 0.165, jello 0.83 vs 1.25 @146 s)
     measure_open_loop_oa4: bool = False  # ... and skip the (report-only) open-loop measurement pass there (~2x faster)
-    min_improve: float = 0.03            # stop when the composite HF residual improves less than this fraction
+    loop_off_cameras: tuple = ('Osmo Action 4', 'O4 Pro')   # high-rate cameras loop_iters_oa4 /
+                                         # measure_open_loop_oa4 apply to (substring of Telemetry.camera). O4 Pro
+                                         # added in gate v4 (2026-09-28): with its corrected 1 kHz timing (parser v9) the
+                                         # loop lost to loop-off on DJI_20260925151512_0004 -- quality report (13 sampled
+                                         # windows) HF 0.628 vs 0.584 px, calm 8-30 Hz 0.100 vs 0.068, new jumps > 1 px 5
+                                         # vs 1, better in 12/13 windows; 508 s vs 342 s (with the open-loop pass)
+    min_improve: float = 0.03           # stop when the composite HF residual improves less than this fraction
     refine_max_frac: float = 0.15        # 2nd+ folds re-measure at most this fraction of the 1-s windows (largest
                                          # increments first); M2: a 2nd fold gained <= 1-5 % for up to 35 % of a pass
     preview_width: int = 960
@@ -131,8 +148,29 @@ class AnalyzeParams:
     processes: Optional[int] = None      # measurement process pool; None -> residual.default_processes(); 0 -> threads
     residual_overrides: dict = field(default_factory=dict)   # extra ResidualParams fields
     # ---- resources (ENGINE v3): frames are streamed with a bounded buffer; nothing big is written to disk
-    decode_lanes: int = 3                # parallel ffmpeg decoders (one VT H.264 4K60 stream: ~55-70 fps)
-    decode_block: int = 150              # frames per decode block (buffer = lanes*block+64 frames, ~270-360 MB)
+    decode_lanes: int = 0                # parallel decoder processes; 0 -> auto (2: one single-threaded VideoToolbox
+                                         # lane decodes 4K H.264 at ~95 fps and 4K 4:3 HEVC 10-bit at ~105 fps, the
+                                         # measurement consumes 20-60 frames/s; each lane costs 0.18-0.37 GB)
+    decode_block: int = 150              # frames per decode block
+    frame_buffer_frames: int = 0         # reorder-buffer capacity (frames); 0 -> auto (block + 96: ~130-170 MB)
+    prefetch_depth: int = 16             # rendered previews queued ahead of the measurement (was 48)
+    mem_budget_gb: float = 4.5           # peak RSS budget of the whole process group; sizes the worker pool (with
+                                         # processes as an upper bound) from MEM_MODEL and the RAM available; 0 = off
+    smooth_window: int = 1500            # path QP window core (frames): Clarabel memory ~ concurrent windows x window,
+                                         # bounded for any clip length (smooth.py's auto = F/workers: 3.8k-frame
+                                         # windows on a 30k clip; same path to 0.02 px on DJI_..._0013); -1 = auto
+    path_proc_frames: int = 6000         # clips with >= this many frames solve the path in a short-lived child
+                                         # process (memory returned on exit); 0 = always, -1 = never
+    mem_watch: bool = True               # sample the process group's RSS every 1 s -> report['resources']['rss']
+    worker_malloc_env: dict = field(default_factory=lambda: {'MallocLargeCache': '0'})
+                                         # environment of the measurement workers (set only while the pool spawns).
+                                         # macOS malloc's large-block cache let a worker grow to 0.6-0.94 GB of
+                                         # FREED blocks (5 workers: 4.3 GB) before memory pressure trimmed it; off:
+                                         # 0.21-0.34 GB, ~10 % slower measurement pairs (quality pass unchanged).
+                                         # {} = the system default
+    max_workers_measure: int = 6         # measurement pool cap: the passes saturate at 5-6 workers (the single
+                                         # feeding process is the bottleneck: 33-37 / 36-39 / 34-40 pairs/s with
+                                         # 4 / 5 / 6 workers on DJI_0034); quality-only pools may use more
     work_dir: Optional[str] = None       # overrides $STILLPOINT_WORK_DIR for the job's temporary files
     max_temp_bytes: int = 2 * 1024 ** 3  # pre-flight: free space needed on the work volume (+2 GB reserve)
     telemetry_cache: Optional[str] = None   # telemetry cache dir (default <work root>/cache)
@@ -588,7 +626,8 @@ def _preview_plan(plan: Plan) -> Plan:
 def measure_plan(plan: Plan, video: str, preview_width: int = 960, workers: Optional[int] = None,
                  records: Optional[np.ndarray] = None, progress: Optional[Callable] = None, *,
                  cache: Optional[LumaCache] = None, executor=None,
-                 cancel: Optional[CancelFn] = None, stream=None, params=None) -> tuple[dict, np.ndarray]:
+                 cancel: Optional[CancelFn] = None, stream=None, params=None,
+                 prefetch: int = 16) -> tuple[dict, np.ndarray]:
     """Render 960-wide rectilinear previews of `plan` and measure the per-pair residual rotation vs the plan's
     intended virtual relative rotation. Returns (measure_residuals dict, preview K). records may contain
     several runs of consecutive frames (pairs across runs are skipped). Frames come from `stream` (a bounded
@@ -612,7 +651,7 @@ def measure_plan(plan: Plan, video: str, preview_width: int = 960, workers: Opti
         gen = _render_cached(pplan, cache, recs)
     else:
         gen = render_frames(pplan, video, recs, out_scale=scale, return_valid=True)
-    it = _prefetch(gen, 48)
+    it = _prefetch(gen, max(2, int(prefetch)))
     try:
         res = measure_residuals(it, K, expected, params=params, workers=workers, progress=progress,
                                 executor=executor, consecutive_only=True, cancel=cancel)
@@ -908,6 +947,360 @@ def gyroflow_footprint(gf_render: str, plan: Plan, cache, frame_pts: np.ndarray,
     return d
 
 
+# ============================================================================================ resources
+
+# Per-process memory model (peak RSS, bytes), measured on the M4 Pro with DJI_0034 (O3, 4K H.264, 960x540 analysis)
+# and DJI_20260927091931_0012 / DJI_20260927104004_0013 (OA4, 3840x2880 HEVC 10-bit, 960x720 analysis), 2026-09-28.
+# Most of a worker's (and much of this process's) RSS is macOS malloc's cache of FREED blocks (MALLOC_LARGE/SMALL
+# 'empty' regions: ~320 of a worker's ~400 MB footprint; malloc_zone_pressure_relief releases none of it;
+# MallocLargeCache=0 halves it but costs 12-20 % measurement speed), so the model uses measured peaks.
+# Worker count is cheap to lower: on DJI_0034 (15-s window, 1 fold) the measurement passes ran at 33-37 pairs/s with
+# 4 workers, 36-39 with 5 and 34-40 with 6 (the single feeding process -- decode, GPU previews, pickling -- is the
+# bottleneck; pool utilisation falls from 0.85 to 0.7), so the budget costs <~5 % speed vs the old 9 workers.
+MEM_MODEL = dict(
+    main_base=0.80e9,                 # python + numpy/scipy/cv2 + torch MPS + Metal library + telemetry (0.41 GB
+                                      # idle) + malloc-retained scratch (measured 0.9-1.3 GB in the passes)
+    main_per_frame=4e3,               # whole-clip arrays alive during the passes (plans, dense residuals, ...)
+    decoder_base=0.07e9,              # one decoder process (PyAV + VideoToolbox, one FFmpeg thread) ...
+    decoder_src_frames=9.0,           # ... + this many decoded source frames (4K H.264: 0.18-0.21 GB, 4:3 HEVC
+                                      #     10-bit: 0.30-0.37 GB)
+    decoder_src_frames_mt=38.0,       # FFmpeg frame threading (STILLPOINT_DECODER_THREADS=0): 0.54 / 1.32 GB
+    worker_base=0.10e9,               # measurement worker: interpreter, cv2, numpy ...
+    worker_frames_measure=480.0,      # ... + this many analysis frames while measuring, large-block cache off
+                                      #     (worker_malloc_env default): 0.21-0.34 GB at 960x540
+    worker_frames_measure_cached=1650.0,  # ... with the system malloc: 0.38-0.94 GB (the freed-block cache grows
+                                      #     until memory pressure; measure then quality in the same workers)
+    worker_frames_quality=280.0,      # ... while running the quality estimator (3-s window mmap + KLT: <= 0.29 GB)
+    inflight_frames=57,               # analysis frames this process holds per in-flight measurement chunk
+    quality_main_frames=360,          # quality pass: one open window (2 x 3 s) of memmapped previews in this process
+)
+
+
+def available_memory() -> Optional[int]:
+    """Bytes the system could give us now (free + inactive + speculative + purgeable pages; macOS vm_stat).
+    None when unknown."""
+    try:
+        out = subprocess.run(['vm_stat'], capture_output=True, text=True, timeout=3).stdout
+    except Exception:
+        return None
+    import re
+    m = re.search(r'page size of (\d+) bytes', out)
+    if not m:
+        return None
+    ps = int(m.group(1))
+    tot = 0
+    for key in ('Pages free', 'Pages inactive', 'Pages speculative', 'Pages purgeable'):
+        mm = re.search(key + r':\s+(\d+)', out)
+        if mm:
+            tot += int(mm.group(1))
+    return tot * ps if tot else None
+
+
+def _decoder_threads() -> int:
+    try:
+        return int(os.environ.get('STILLPOINT_DECODER_THREADS', '1') or 1)
+    except ValueError:
+        return 1
+
+
+def plan_resources(prm: 'AnalyzeParams', src_w: int, src_h: int, bit_depth: int, an_w: int, an_h: int,
+                   n_frames: int, stage: str = 'measure', avail_bytes: Optional[int] = None,
+                   main_rss: Optional[int] = None, max_workers: Optional[int] = None) -> dict:
+    """Decoder lanes, reorder-buffer capacity and measurement-worker count so that the whole process group stays
+    within prm.mem_budget_gb (and within what the system has available: avail_bytes + this process's main_rss).
+    stage: the heaviest pool user of this analysis ('measure' = closed-loop passes, 'quality' = the quality
+    estimator only, e.g. OA4 clips with the loop off, 'none'). processes (if > 0) is an upper bound on the
+    worker count; max_workers defaults to residual.default_processes(). Pure; returns a dict (also reported)."""
+    M = MEM_MODEL
+    fb = float(an_w * an_h)                                           # analysis frame bytes (uint8 luma)
+    src_fb = float(src_w * src_h) * 1.5 * (2.0 if bit_depth > 8 else 1.0)
+    lanes_auto = not (prm.decode_lanes and prm.decode_lanes > 0)
+    lanes = 2 if lanes_auto else int(prm.decode_lanes)
+    block = max(8, int(prm.decode_block))
+    kdec = M['decoder_src_frames'] if _decoder_threads() == 1 else M['decoder_src_frames_mt']
+    if max_workers is None:
+        from .residual import default_processes
+        max_workers = default_processes()
+    if stage == 'measure' and prm.max_workers_measure and prm.max_workers_measure > 0:
+        max_workers = min(int(max_workers), int(prm.max_workers_measure))
+    want = int(prm.processes) if (prm.processes is not None and prm.processes > 0) else int(max_workers)
+    if prm.processes == 0 or stage == 'none':
+        want = 0
+    budget = float(prm.mem_budget_gb or 0.0) * 1e9
+    eff = budget
+    if budget > 0 and avail_bytes:
+        eff = min(budget, max(2.0e9, 0.9 * float(avail_bytes) + float(main_rss or 0)))
+    lc_off = str((prm.worker_malloc_env or {}).get('MallocLargeCache', '')).strip() == '0'
+    w_meas = M['worker_base'] + fb * M['worker_frames_measure' if lc_off else 'worker_frames_measure_cached']
+    w_qual = M['worker_base'] + fb * M['worker_frames_quality']
+    infl = M['inflight_frames'] * fb
+
+    def fit(lanes_):
+        """-> capacity, (main, per-worker) of the heaviest stage, decoders, workers that fit. The pool is created
+        once and serves the measurement passes (if any) and then the quality pass: both must fit."""
+        cap_ = int(prm.frame_buffer_frames) if prm.frame_buffer_frames and prm.frame_buffer_frames > 0 else \
+            min(lanes_ * block + 64, block + 96)
+        base_ = M['main_base'] + M['main_per_frame'] * n_frames + cap_ * fb
+        dec_ = lanes_ * (M['decoder_base'] + kdec * src_fb)
+        stages = []
+        if stage == 'measure':                  # previews prefetched + in-flight chunks held by this process
+            stages.append((base_ + 2 * max(2, prm.prefetch_depth) * fb + infl, w_meas + infl))
+        if stage in ('measure', 'quality') and prm.quality:
+            stages.append((base_ + M['quality_main_frames'] * fb, w_qual))
+        if not stages:
+            stages.append((base_, 0.0))
+        n_fit = want
+        if eff > 0:
+            n_fit = min(int(math.floor((eff - m_ - dec_) / w_)) if w_ > 0 else want for m_, w_ in stages)
+        return cap_, stages, dec_, n_fit
+
+    cap, stages, dec, n_fit = fit(lanes)
+    if lanes_auto and want > 0 and eff > 0 and n_fit < min(want, 4) and lanes > 1:
+        lanes = 1                                                     # tight budget: one decoder lane
+        cap, stages, dec, n_fit = fit(lanes)
+    n = want if (eff <= 0 or want == 0) else max(1, min(want, n_fit))
+    main, worker_ = max(stages, key=lambda s: s[0] + dec + n * s[1])
+    total = main + dec + n * worker_
+    worker, infl = worker_, 0.0
+    return dict(stage=stage, budget_gb=budget / 1e9, effective_budget_gb=eff / 1e9,
+                available_gb=(avail_bytes / 1e9 if avail_bytes else None), lanes=lanes, block=block, capacity=cap,
+                prefetch=max(2, int(prm.prefetch_depth)), processes=int(n), cpu_workers=int(want),
+                limited_by_memory=bool(eff > 0 and n < want),
+                est_gb=dict(main=main / 1e9, decoders=dec / 1e9, per_worker=(worker + infl) / 1e9,
+                            workers=n * (worker + infl) / 1e9, total=total / 1e9),
+                frame_mb=fb / 1e6, src_frame_mb=src_fb / 1e6, decoder_threads=_decoder_threads())
+
+
+class _MemWatch:
+    """Samples the RSS of this process and all its descendants every `every` s (ps) -> peak total, the stage at
+    the peak and the breakdown (report.json['resources']['rss']): catches spikes in the field."""
+
+    def __init__(self, pg: '_Progress', every: float = 1.0):
+        self.pg, self.every = pg, every
+        self.stop = threading.Event()
+        self.peak = dict(total_gb=0.0)
+        self.stage_peak: dict = {}
+        self.n = 0
+        self.th = threading.Thread(target=self._run, daemon=True, name='stillpoint-memwatch')
+
+    def start(self):
+        self.th.start()
+        return self
+
+    def sample(self) -> Optional[dict]:
+        try:
+            out = subprocess.run(['ps', '-Ao', 'pid=,ppid=,rss='], capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            return None
+        rows = {}
+        kids: dict = {}
+        for ln in out.splitlines():
+            p = ln.split()
+            if len(p) == 3:
+                try:
+                    pid, pp, r = int(p[0]), int(p[1]), int(p[2]) * 1024
+                except ValueError:
+                    continue
+                rows[pid] = r
+                kids.setdefault(pp, []).append(pid)
+        me = os.getpid()
+        tot, st, nproc = 0, [me], 0
+        while st:
+            q = st.pop()
+            if q in rows:
+                tot += rows[q]
+                nproc += 1
+            st.extend(kids.get(q, []))
+        return dict(total_gb=tot / 1e9, main_gb=rows.get(me, 0) / 1e9, n_proc=nproc)
+
+    def _run(self):
+        while not self.stop.wait(self.every):
+            s = self.sample()
+            if s is None:
+                continue
+            self.n += 1
+            stage = self.pg.last_stage
+            if s['total_gb'] > self.peak['total_gb']:
+                self.peak = dict(s, stage=stage)
+            sp = self.stage_peak.setdefault(stage, 0.0)
+            self.stage_peak[stage] = max(sp, round(s['total_gb'], 3))
+
+    def close(self) -> dict:
+        self.stop.set()
+        self.th.join(3.0)
+        return dict(peak_total_gb=round(self.peak['total_gb'], 3), peak_stage=self.peak.get('stage'),
+                    peak_main_gb=round(self.peak.get('main_gb', 0.0), 3), peak_n_proc=self.peak.get('n_proc'),
+                    stage_peak_gb=self.stage_peak, samples=self.n, interval_s=self.every)
+
+
+class _env:
+    """Temporarily set environment variables (inherited by processes spawned inside the block)."""
+
+    def __init__(self, env: Optional[dict]):
+        self.env = dict(env or {})
+        self.old: dict = {}
+
+    def __enter__(self):
+        for k, v in self.env.items():
+            self.old[k] = os.environ.get(k)
+            os.environ[k] = str(v)
+        return self
+
+    def __exit__(self, *exc):
+        for k, v in self.old.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        return False
+
+
+def _trim():
+    """Collect garbage between stages (plans / dense arrays referenced from cycles)."""
+    import gc
+    gc.collect()
+
+
+def loop_off_camera(tel: Telemetry, prm: 'AnalyzeParams') -> bool:
+    """True when this clip's closed loop is capped at prm.loop_iters_oa4 folds: a high-rate in-camera attitude from
+    one of prm.loop_off_cameras (Osmo Action 4, O4 Pro), where the vision fold chased parallax / its own noise, and
+    the cap actually lowers the requested fold count."""
+    cams = tuple(prm.loop_off_cameras or ())
+    return bool(tel.has_highrate and any(c and c in str(tel.camera) for c in cams)
+                and prm.loop_iters_oa4 >= 0 and prm.closed_loop_iters > prm.loop_iters_oa4)
+
+
+def _qfn(tel: Telemetry, tm: TimeModel, correction=None):
+    """camera_orientation_fn that remembers how it was built (the path-solver child rebuilds it from the recipe)."""
+    f = camera_orientation_fn(tel, tm, correction=correction)
+    f.recipe = (tm, correction)
+    return f
+
+
+def _path_child(conn, parent_pid):
+    """Path-solver process: receive (tel, tm, frames, out_w, out_h), then serve (correction, SmoothParams) requests
+    with optimize_path results. (The inputs come over the pipe, not as Process args: multiprocessing writes the
+    args into the child's bootstrap pipe while it still holds the read end, so a child that died during start-up
+    would block the parent's start() forever on a 40 MB telemetry pickle.)"""
+    try:
+        from .residual import _parent_watchdog
+        _parent_watchdog(parent_pid)
+    except Exception:
+        pass
+    try:
+        tel, tm, frames, out_w, out_h = conn.recv()
+    except (EOFError, OSError):
+        return
+    from .smooth import optimize_path
+    while True:
+        try:
+            req = conn.recv()
+        except (EOFError, OSError):
+            break
+        if req is None:
+            break
+        correction, sp = req
+        try:
+            q = camera_orientation_fn(tel, tm, correction=correction)
+            sp.cancel = None
+            sp.tick = lambda f: conn.send(('tick', float(f)))
+            v, fx, info = optimize_path(tel, q, frames, out_w, out_h, sp, tm=tm, return_info=True)
+            conn.send(('ok', v, fx, info))
+        except (BrokenPipeError, EOFError, OSError):
+            break
+        except BaseException as e:  # noqa: BLE001
+            import traceback
+            try:
+                conn.send(('err', f'{e!r}\n{traceback.format_exc()[-2000:]}'))
+            except Exception:
+                break
+
+
+class _SolverDied(RuntimeError):
+    pass
+
+
+class _PathSolver:
+    """optimize_path in a short-lived child process. A 30k-frame solve peaks at ~1.5-2.4 GB and macOS malloc keeps
+    ~1.3 GB of the freed pages resident in the process that ran it (MALLOC_LARGE/SMALL 'empty' regions,
+    malloc_zone_pressure_relief releases none) -- in a child they go back to the system when it exits.
+    The child's result is identical (same code, same inputs). cancel: the caller's check() raises; the child is
+    killed by close()."""
+
+    def __init__(self, tel: Telemetry, tm: TimeModel, frames: np.ndarray, out_w: int, out_h: int):
+        import multiprocessing as mp
+        from .residual import _hide_main_file
+        ctx = mp.get_context('spawn')
+        self.conn, child = ctx.Pipe(duplex=True)
+        with _hide_main_file():
+            self.proc = ctx.Process(target=_path_child, daemon=True, name='stillpoint-path',
+                                    args=(child, os.getpid()))
+            self.proc.start()
+        child.close()
+        self.n_solves = 0
+        try:                             # the socket's peer is closed if the child died: this raises, never blocks
+            self.conn.send((replace(tel, extra={}), tm, np.asarray(frames), int(out_w), int(out_h)))
+        except (BrokenPipeError, EOFError, OSError) as e:
+            self.close()
+            raise _SolverDied(f'path solver did not start: {e!r}') from e
+
+    def solve(self, correction, sp, check: Callable[[], None]):
+        import copy
+        tick = sp.tick
+        sp2 = copy.copy(sp)
+        sp2.tick = None
+        sp2.cancel = None
+        try:
+            self.conn.send((correction, sp2))
+        except (BrokenPipeError, EOFError, OSError) as e:
+            raise _SolverDied(f'path solver pipe closed: {e!r}') from e
+        while True:
+            check()
+            try:
+                ready = self.conn.poll(0.2)
+            except (EOFError, OSError) as e:
+                raise _SolverDied(f'path solver pipe closed: {e!r}') from e
+            if not ready:
+                if not self.proc.is_alive():
+                    raise _SolverDied(f'path solver exited (code {self.proc.exitcode})')
+                continue
+            try:
+                msg = self.conn.recv()
+            except (EOFError, OSError) as e:
+                raise _SolverDied(f'path solver died: {e!r} (exit code {self.proc.exitcode})') from e
+            if msg[0] == 'tick':
+                if tick is not None:
+                    tick(msg[1])
+            elif msg[0] == 'ok':
+                self.n_solves += 1
+                return msg[1], msg[2], msg[3]
+            else:
+                raise RuntimeError('path solver: ' + str(msg[1]))
+
+    def pid(self) -> Optional[int]:
+        return self.proc.pid
+
+    def close(self):
+        try:
+            self.conn.send(None)
+        except Exception:
+            pass
+        try:
+            self.proc.join(2.0)
+        except Exception:
+            pass
+        if self.proc.is_alive():
+            try:
+                self.proc.kill()
+                self.proc.join(2.0)
+            except Exception:
+                pass
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+
 # ============================================================================================ analyze
 
 
@@ -916,6 +1309,8 @@ def _smooth_params(prm: AnalyzeParams, fx0: float, tm: TimeModel, tel: Telemetry
     from .smooth import SmoothParams
     sp = SmoothParams(smoothness=prm.smoothness, min_out_fx=fx0, max_out_fx=fx0 * prm.max_zoom,
                       allow_zoom=prm.allow_zoom)
+    if prm.smooth_window is not None and prm.smooth_window >= 0:
+        sp.window = int(prm.smooth_window)
     for k, v in (prm.smooth_overrides or {}).items():
         setattr(sp, k, v)
     if pg is not None:
@@ -1029,10 +1424,9 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                       segments=[(max(int(a), s_) - s_, min(int(b), e_ - 1) - s_) for a, b in (tel.segments or [])
                                 if int(b) >= s_ and int(a) < e_])
     loop_note = None
-    if (tel.has_highrate and 'Osmo Action 4' in str(tel.camera) and prm.loop_iters_oa4 >= 0
-            and prm.closed_loop_iters > prm.loop_iters_oa4):
-        loop_note = (f'OA4 1 kHz attitude: closed loop {prm.closed_loop_iters} -> {prm.loop_iters_oa4} folds '
-                     '(AnalyzeParams.loop_iters_oa4)')
+    if loop_off_camera(tel, prm):
+        loop_note = (f'{tel.camera} 1 kHz attitude: closed loop {prm.closed_loop_iters} -> {prm.loop_iters_oa4} folds '
+                     '(AnalyzeParams.loop_iters_oa4 / loop_off_cameras)')
         prm = replace(prm, closed_loop_iters=int(prm.loop_iters_oa4),
                       measure_open_loop=bool(prm.measure_open_loop and prm.measure_open_loop_oa4))
         _log(prm, loop_note)
@@ -1047,15 +1441,34 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
 
     stream = None
     pool = None
+    memw = _MemWatch(pg).start() if prm.mem_watch else None
+    solver: dict = dict(s=None, ok=True, n=0, s_total=0.0)
     res_prm = ResidualParams(**(prm.residual_overrides or {}))
+    will_measure = not (prm.closed_loop_iters == 0 and not prm.measure_open_loop)
+    pool_stage = 'measure' if will_measure else ('quality' if (prm.quality and F >= 90) else 'none')
     try:
-        stream = FrameStream(video, prm.preview_width, lanes=prm.decode_lanes, block=prm.decode_block)
+        from .video import gray_size, probe
+        vinfo = probe(video)
+        an_w, an_h = gray_size(vinfo['width'], vinfo['height'], prm.preview_width)
+        try:
+            rss_now = int(subprocess.run(['ps', '-o', 'rss=', '-p', str(os.getpid())], capture_output=True,
+                                         text=True, timeout=3).stdout.strip() or 0) * 1024
+        except Exception:
+            rss_now = None
+        rplan = plan_resources(prm, int(vinfo['width']), int(vinfo['height']), int(vinfo.get('bit_depth') or 8),
+                               an_w, an_h, F, stage=pool_stage, avail_bytes=available_memory(), main_rss=rss_now)
+        _log(prm, f'resources: {rplan["processes"]} workers (cpu {rplan["cpu_workers"]}), {rplan["lanes"]} decoder '
+                  f'lanes, buffer {rplan["capacity"]} frames, est. peak {rplan["est_gb"]["total"]:.2f} GB '
+                  f'(budget {rplan["effective_budget_gb"]:.2f} GB)')
+        stream = FrameStream(video, prm.preview_width, lanes=rplan['lanes'], block=rplan['block'],
+                             capacity=rplan['capacity'], info=vinfo)
         if s_ > 0:
             stream = _OffsetStream(stream, s_)
         T['frame_buffer_mb'] = stream.max_buffer_bytes() / 1e6
-        if prm.processes is None or prm.processes > 0:
+        if pool_stage != 'none' and rplan['processes'] > 0:
             try:
-                pool = make_pool(prm.processes)
+                with _env(prm.worker_malloc_env):
+                    pool = make_pool(rplan['processes'])
             except Exception as e:  # pragma: no cover - fall back to threads
                 _log(prm, f'process pool unavailable ({e!r}); using threads')
                 pool = None
@@ -1088,14 +1501,41 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                   f'(meta {calib["readout_meta_ms"]:.3f}), focal x{tm.focal_scale:.4f}, ext {np.round(calib["extrinsic_deg"], 3)}')
         pg('calibration', 1.0, 'calibration done')
 
-        q_fn = camera_orientation_fn(tel, tm)
+        q_fn = _qfn(tel, tm)
         lens = effective_lens(tel, tm)
         lf_speed = camera_lf_speed(tel, frames, q_fn, fs)
         info_holder = {}
+        use_proc = prm.path_proc_frames is not None and prm.path_proc_frames >= 0 and F >= prm.path_proc_frames
+
+        def close_solver():
+            if solver['s'] is not None:
+                solver['s'].close()
+                solver['s'] = None
+                _trim()
 
         def optimize(qf, fx0, stage='path', lo=0.0, hi=1.0):
             sp = _smooth_params(prm, fx0, tm, tel, pg, stage, lo, hi)
-            v, fx, info = optimize_path(tel, qf, frames, out_w, out_h, sp, tm=tm, return_info=True)
+            rec = getattr(qf, 'recipe', None)
+            res_ = None
+            if use_proc and solver['ok'] and rec is not None and rec[0] is tm:
+                t_s = time.perf_counter()
+                try:
+                    if solver['s'] is None:
+                        solver['s'] = _PathSolver(tel, tm, frames, out_w, out_h)
+                    res_ = solver['s'].solve(rec[1], sp, pg.check)
+                    solver['n'] += 1
+                    solver['s_total'] += time.perf_counter() - t_s
+                except (AnalysisCancelled, InterruptedError):
+                    raise
+                except Exception as e:  # noqa: BLE001 - never lose an analysis to the isolation: solve here
+                    _log(prm, f'path solver process failed ({e!r}); solving in-process')
+                    solver['ok'] = False
+                    solver['error'] = repr(e)[:500]
+                    close_solver()
+                    res_ = None
+            if res_ is None:
+                res_ = optimize_path(tel, qf, frames, out_w, out_h, sp, tm=tm, return_info=True)
+            v, fx, info = res_
             info_holder['info'] = info
             return v, fx, info
 
@@ -1123,6 +1563,7 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             fx0, v, fx, info = _crop_footprint(prm, tel, lens, out_w, out_h, q_fn, optimize, mkplan, stream,
                                                video, crop, pg)
         crop['min_out_fx'] = fx0
+        close_solver()                                  # the solver child exits: its memory goes back to the OS
         T['crop_s'] = time.perf_counter() - t0
         pg('crop', 1.0, f'out_fx {fx0:.1f}')
         pg('path', 0.0, 'building the plan')
@@ -1165,7 +1606,8 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             def prog(n_done, _s=stage, _n=nrec, _i=i):
                 pg(_s, n_done / max(_n - 1, 1), f'measuring pass {_i}: {n_done}/{_n - 1} pairs')
             res, K = measure_plan(plan, video, prm.preview_width, prm.workers, records=records, progress=prog,
-                                  stream=stream, executor=pool, cancel=pg.cancel_fn, params=res_prm)
+                                  stream=stream, executor=pool, cancel=pg.cancel_fn, params=res_prm,
+                                  prefetch=rplan['prefetch'])
             tm_meas = time.perf_counter() - ti
             dn = _dense(res, F)
             rec = dict(iter=i, measure_s=tm_meas, pairs_per_s=res['timing']['pairs_per_s'],
@@ -1276,9 +1718,11 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             rec['next_measure_windows'] = int(need.sum())
             incs.append(corr)
             inc_support.append(np.convolve(d['pair_weight'], np.ones(5) / 5, mode='same'))
-            q_fn = camera_orientation_fn(tel, tm, correction=compose_corrections(*incs))
+            q_fn = _qfn(tel, tm, correction=compose_corrections(*incs))
             v, fx, info = optimize(q_fn, fx0, f'fold{i + 1}', 0.1, 0.9)
+            close_solver()
             plan = mkplan(q_fn, v, fx)
+            _trim()
             rec['replan_s'] = time.perf_counter() - tf
             rec['next_measure_frac'] = float(len(records) / F)
             iters.append(rec)
@@ -1304,8 +1748,9 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             guard['max_step_px_before'] = float(c_steps.max()) if len(c_steps) else 0.0
         corr_best = compose_corrections(*incs) if incs else None
         if incs and len(iters) > 0:
-            q_fn = camera_orientation_fn(tel, tm, correction=corr_best)
+            q_fn = _qfn(tel, tm, correction=corr_best)
             v, fx, info = optimize(q_fn, fx0, 'final', 0.1, 0.9)
+            close_solver()
             plan = mkplan(q_fn, v, fx)
         T['closed_loop_s'] = time.perf_counter() - t_loop
         T['final_replan_s'] = time.perf_counter() - tf
@@ -1314,6 +1759,7 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
 
         # ---- independent quality report (eval's estimator on the original vs the final plan)
         quality = None
+        _trim()
         if prm.quality and F >= 90:
             pg('quality', 0.0, 'measuring the result independently')
             tq = time.perf_counter()
@@ -1390,7 +1836,10 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                         max_violation_px=info['max_violation_px'], n_frames_violating=info['n_frames_violating']),
             closed_loop=rep_cl, quality=quality, timings=T, plan=plan_path,
             resources=dict(work_dir=job.dir, frame_buffer_mb=T.get('frame_buffer_mb'),
-                           pool_workers=getattr(pool, 'n_workers', 0)),
+                           pool_workers=getattr(pool, 'n_workers', 0), plan=rplan,
+                           path_solver=dict(process=bool(use_proc and solver['ok']), solves=solver['n'],
+                                            seconds=round(solver['s_total'], 2), error=solver.get('error')),
+                           rss=memw.close() if memw is not None else None),
             params={k: (v_ if not isinstance(v_, tuple) else list(v_)) for k, v_ in asdict(prm).items()})
         with open(os.path.join(out_dir, 'report.json'), 'w') as fh:
             json.dump(report, fh, indent=1, default=_json_default)
@@ -1404,10 +1853,14 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
         pg.done(f'analysis done in {T["total_s"]:.0f}s')
         return report
     finally:
+        if solver['s'] is not None:
+            solver['s'].close()
         if pool is not None:
             shutdown_pool(pool)
         if stream is not None:
             stream.close()
+        if memw is not None:
+            memw.close()
 
 
 def _eval_plan_footprint(plan: Plan, records: np.ndarray) -> np.ndarray:

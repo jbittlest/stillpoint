@@ -1,6 +1,9 @@
 """WP-D tests for stillpoint.closedloop (fold_residuals) + the full measure -> fold -> re-render loop.
 
 Simulation (camera frame x right, y down, z forward; q maps camera -> world):
+  (The math / end-to-end tests model up to 0.2-0.3 deg of 2-25 Hz camera error that the gyro path does not show
+  at all; they run with the step limiter off (step_floor_px=None), which by design refuses frame-to-frame
+  correction steps the gyro's own events do not back. The limiter has its own tests at the end.)
   V_k      intended virtual path (slow pan)
   R_est_k  camera orientation estimate = V_k * Exp(s_k)   (s = the large stabilisation rotation, gyro shake)
   R_true_k = R_est_k * Exp(c_k)                            (c = camera-frame orientation ERROR to be found:
@@ -63,7 +66,7 @@ def test_sign_and_axes_exact_math():
     W = effective(sim, sim['R_est'])
     rel = exact_rel_err(W, sim['V'])
     corr, diag = fold_residuals(sim['t'], rel, np.ones(len(rel)), FPS, hp_hz=1.0, clamp_deg=2.0,
-                                virt_to_cam_q=virt_to_cam(sim['R_est'], sim['V']))
+                                virt_to_cam_q=virt_to_cam(sim['R_est'], sim['V']), step_floor_px=None)
     cv = corr.rotvec(sim['t'])
     hf_c = _hp(sim['c'], FPS, 1.0)
     inner = slice(60, -60)  # filtfilt edge transients
@@ -97,7 +100,7 @@ def test_applying_correction_removes_scene_rotation():
     W0 = effective(sim, R0)
     rel0 = exact_rel_err(W0, sim['V'])
     corr = fold_residuals(sim['t'], rel0, np.ones(len(rel0)), FPS, hp_hz=1.0, clamp_deg=2.0,
-                          virt_to_cam_q=virt_to_cam(R0, sim['V']))
+                          virt_to_cam_q=virt_to_cam(R0, sim['V']), step_floor_px=None)
     R1 = qmul(R0, corr(sim['t']))
     rel1 = exact_rel_err(effective(sim, R1), sim['V'])
     inner = slice(40, -40)
@@ -173,7 +176,8 @@ def test_closed_loop_on_rendered_previews():
 
     W0, m0 = run(sim['R_est'])
     corr, diag = fold_residuals(sim['t'], m0['err_rotvec'], m0['conf'], FPS, hp_hz=1.0, clamp_deg=0.5,
-                                virt_to_cam_q=virt_to_cam(sim['R_est'], sim['V']), px_per_rad=PXR)
+                                virt_to_cam_q=virt_to_cam(sim['R_est'], sim['V']), px_per_rad=PXR,
+                                step_floor_px=None)
     R1 = qmul(sim['R_est'], corr(sim['t']))
     W1, m1 = run(R1)
     inner = slice(30, -30)
@@ -350,3 +354,104 @@ def test_vision_spike_as_large_as_the_gyro_jolt_is_rejected():
     assert not reject_outliers(bad, w, AX)[0][150]             # plain Hampel: below 5x the local scale
     out, _ = reject_outliers(bad, w, AX, pred_px=pred, pred_ceiling=0.5)
     assert out[150] and out.sum() <= 3
+
+
+# ------------------------------------------------------------------ O4 Pro frame steps: gyro spikes and step limiter
+from stillpoint.closedloop import gyro_event_vectors, limit_steps  # noqa: E402
+
+
+def _gyro_scene(n=600, seed=41, amp=(0.002, 0.02)):
+    """Truth = gyro everywhere (no residual error), small real jitter in both; smooth virtual path."""
+    sim = simulate(n, seed=seed, s_deg=3.0, lf_deg=0.0, amp=amp)
+    return sim['R_true'], sim['V'], sim['t']
+
+
+def _visible(R_true, R_est, V):
+    """What the viewer sees: the content's orientation error vs the intended path (virtual frame), and its
+    per-pair steps (velocity outlier, 1080p-eq px)."""
+    e = qlog(qmul(qconj(V), qmul(qmul(R_true, qconj(R_est)), V)))
+    return e, step_series(e, AX)
+
+
+def test_false_single_frame_gyro_spike_is_cancelled():
+    """O4 Pro 0004 diagnosis: a one-frame gyro spike the image does not share is injected into the output by the
+    stabiliser (here 1.5 px). The preview measurement sees exactly that event; before this fix reject_outliers took
+    it for a vision failure (larger than pred_gain x the gyro event) and the spike stayed. Now it is recognised as
+    the image refuting the gyro and folded: no visible step. The real jitter the gyro shares is untouched."""
+    R_true, V, t = _gyro_scene()
+    k0 = 300
+    spike = np.zeros((len(t), 3))
+    spike[k0, 0] = 1.5 / F1080                                  # gyro claims a 1.5 px pitch blip at frame k0
+    R_est = qmul(R_true, qexp(spike))
+    W = qmul(qmul(R_true, qconj(R_est)), V)
+    rel = exact_rel_err(W, V) + np.random.default_rng(0).normal(0, 0.05 / F1080, (len(t) - 1, 3))
+    conf = np.full(len(rel), 0.8)
+    M = virt_to_cam(R_est, V)
+    g = gyro_event_vectors(M, AX)
+    assert np.linalg.norm(g[k0 - 1]) > 1.2 and np.linalg.norm(g[k0 + 2]) < 0.6
+    _, s0 = _visible(R_true, R_est, V)
+    assert s0[k0 - 1:k0 + 1].min() > 1.4                        # uncorrected: a 1.5 px blip on screen
+    kw = dict(fs=FPS, clamp_deg=2.0, px_per_rad=F1080, virt_to_cam_q=M)
+    corr = fold_residuals(t, rel, conf, **kw)
+    assert set(corr.diagnostics['gyro_refuted']) >= {k0 - 1, k0}
+    _, s1 = _visible(R_true, qmul(R_est, corr(t)), V)
+    assert s1[30:-30].max() < 0.3, s1[k0 - 3:k0 + 3]           # no visible step anywhere
+    # the mechanism: without the gyro cross-check the same measurement is rejected and the blip stays
+    old = fold_residuals(t, rel, conf, explain_gyro=False, **kw)
+    _, s2 = _visible(R_true, qmul(R_est, old(t)), V)
+    assert s2[k0 - 1:k0 + 1].min() > 1.2
+    # a REAL one-frame jolt (image shares the gyro's event): nothing to fold, nothing changes
+    R_true2 = qmul(R_true, qexp(spike))
+    W2 = qmul(qmul(R_true2, qconj(R_est)), V)
+    rel2 = exact_rel_err(W2, V)
+    corr2 = fold_residuals(t, rel2, conf, **kw)
+    _, s3 = _visible(R_true2, qmul(R_est, corr2(t)), V)
+    assert s3[30:-30].max() < 0.1
+
+
+def test_correction_does_not_step_where_the_gyro_shows_nothing():
+    """0004 8.7 / 20.8 s: correction steps of 0.4-0.6 px at pairs where the gyro's own event was ~0.1-0.3 px (the
+    vision chasing noise / parallax) were the independent eval's new 0.6-0.8 px jumps. A vision-only oscillation
+    (+-0.5 px roll, 12 Hz, 0.6 s, consistent enough to pass the outlier test; gyro quiet) must not make the
+    correction step by more than the floor; the same burst where the gyro shows events of that size is folded as
+    before."""
+    R_true, V, t = _gyro_scene(seed=43, amp=(0.0005, 0.002))        # a quiet gyro: events < 0.05 px
+    R_est = R_true
+    rel = exact_rel_err(qmul(qmul(R_true, qconj(R_est)), V), V)
+    P = len(rel)
+    burst = np.zeros(P + 1)
+    kk = np.arange(280, 316)
+    burst[kk] = 0.5 * np.sin(2 * np.pi * 12 * (kk - 280) / FPS) * np.hanning(len(kk) + 2)[1:-1] ** 0.25
+    bad = rel + np.random.default_rng(3).normal(0, 0.05 / F1080, rel.shape)
+    bad[:, 2] += np.diff(burst) / 636.0
+    conf = np.full(P, 0.8)
+    M = virt_to_cam(R_est, V)
+    # outlier stage off: the burst stands for a consistent measurement that reaches the integration
+    kw = dict(fs=FPS, clamp_deg=2.0, px_per_rad=F1080, virt_to_cam_q=M, outlier_k=None)
+    free = fold_residuals(t, bad, conf, step_floor_px=None, **kw)
+    lim = fold_residuals(t, bad, conf, **kw)
+    s_free = step_series(free.diagnostics['corr_virt'], AX)
+    s_lim = step_series(lim.diagnostics['corr_virt'], AX)
+    assert s_free[280:316].max() > 0.5                          # unlimited: the correction steps like the burst
+    assert s_lim[30:-30].max() <= 0.3 * 1.05, s_lim.max()      # limited to the 0.3 px floor
+    assert lim.diagnostics['n_steps_limited'] >= 3
+    # ... where the gyro shows 1 px one-frame events, the correction may follow (1.5 x the gyro event)
+    pred = np.zeros(P)
+    pred[275:320] = 1.0
+    backed = fold_residuals(t, bad, conf, pred_px=pred, **kw)
+    s_b = step_series(backed.diagnostics['corr_virt'], AX)
+    np.testing.assert_allclose(s_b[285:311], s_free[285:311], atol=0.05)
+
+
+def test_limit_steps_turns_a_step_into_a_ramp():
+    F = 400
+    c = np.zeros((F, 3))
+    c[:, 0] = 0.3 / F1080 * np.sin(2 * np.pi * 3 * np.arange(F) / FPS)
+    c[200:, 1] += 1.5 / F1080                                   # a 1.5 px step at pair 199
+    c2, info = limit_steps(c, AX, np.full(F - 1, 0.3), FPS, relax_s=0.2)
+    assert 199 in info['pairs']
+    assert step_series(c2, AX).max() < 0.35
+    np.testing.assert_allclose(c2[:170], c[:170], atol=0.02 / F1080)      # local only; the position is kept
+    np.testing.assert_allclose(c2[230:], c[230:], atol=0.02 / F1080)
+    c3, info3 = limit_steps(c, AX, np.full(F - 1, 2.0), FPS)              # allowed: untouched
+    assert info3['n_limited'] == 0 and np.allclose(c3, c)

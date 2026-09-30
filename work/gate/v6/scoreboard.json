@@ -1,0 +1,6298 @@
+{
+ "label": "v6",
+ "composed": "2026-09-30T07:24:50",
+ "codec": "prores",
+ "parts": {
+  "o3": {
+   "dir": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill",
+   "label": "fill",
+   "params_overrides": {
+    "fill": true,
+    "fill_overscan": 0.06
+   }
+  },
+  "oa4": {
+   "dir": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default",
+   "label": "default",
+   "params_overrides": {}
+  },
+  "o4": {
+   "dir": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default",
+   "label": "default",
+   "params_overrides": {}
+  }
+ },
+ "windows": {
+  "DJI_0034:15-40": {
+   "window": "DJI_0034:15-40",
+   "clip": "DJI_0034",
+   "cam": "o3",
+   "set": "gate",
+   "start": 15.0,
+   "dur": 25.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.3645221343662108,
+    "calm": 0.1332484447996122,
+    "calm_frac": 0.5653685674547984,
+    "b28": 0.3713315181054956,
+    "b830": 0.09306462592177474,
+    "roll_deg": 0.017097500486752452,
+    "roll830_deg": 0.005650654104350908,
+    "jello": 0.38049712302447325,
+    "row_wobble": 0.35336355363271693,
+    "corner_self": 1.0243073321551406,
+    "corner": 0.5447526783262575,
+    "corner_ref": 0.5939214964934663,
+    "jumps1": 1,
+    "jumps05": 5,
+    "jump_max": 1.204,
+    "crop_fit": 0.6251179682852288,
+    "crop_paired": 0.6250024489795919,
+    "crop_ref": 0.5759226530612245,
+    "crop_plan": 0.6251125121477503,
+    "win": 1.0,
+    "win_n": 23,
+    "win_p": 2.384185791015625e-07,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.13986571519117633,
+    "noise": 0.07394682938368238,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": 0.2756747886487014,
+    "plan_sha": "e54424cbabe25e92",
+    "render_md5": "773366dacb864382aecdd47aa9f93974"
+   },
+   "orig": {
+    "hf": 5.575467370011671,
+    "calm": 1.4177564873328408,
+    "b28": 5.737613942027377,
+    "b830": 0.559140465777498,
+    "roll_deg": 0.2900111773238922,
+    "roll830_deg": 0.030654628803525076,
+    "jello": 0.6459642086298754,
+    "row_wobble": 0.4832087780661206,
+    "corner_wobble": 1.5075279168585518,
+    "footprint": NaN,
+    "med1s": 1.7400865375050087,
+    "spikes_gt1": 14
+   },
+   "gf": {
+    "hf": 1.3078412399326398,
+    "calm": 0.5513495772974027,
+    "b28": 1.2612251882472412,
+    "b830": 0.2482215396534116,
+    "roll_deg": 0.04510710775106574,
+    "roll830_deg": 0.018587499692130922,
+    "jello": 0.4929863190234892,
+    "row_wobble": 0.4221764855348555,
+    "corner_wobble": 1.3142796869222997,
+    "footprint": 0.5759218096793235,
+    "med1s": 0.5270364160125993,
+    "spikes_gt1": 6
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.1948069402989372,
+      "ty": 0.15094789962870658,
+      "roll": 0.18976476012732485,
+      "scale": 0.1900807982563334
+     },
+     "2-8": {
+      "tx": 0.2017855779565147,
+      "ty": 0.15686525085925318,
+      "roll": 0.18870789671873592,
+      "scale": 0.19222980948890778
+     },
+     "8-30": {
+      "tx": 0.04361150983255894,
+      "ty": 0.04078589613661449,
+      "roll": 0.0627164784411308,
+      "scale": 0.03409127185015178
+     },
+     "calm": {
+      "tx": 0.06993100543739862,
+      "ty": 0.06777449241089922,
+      "roll": 0.08055535863117154,
+      "scale": 0.042216760821717755
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 2.7351031085356583,
+      "ty": 3.5648595423901392,
+      "roll": 3.218827309977446,
+      "scale": 0.7321028420357047
+     },
+     "2-8": {
+      "tx": 2.860394922211996,
+      "ty": 3.614309255365942,
+      "roll": 3.3320848652556037,
+      "scale": 0.75652739146801
+     },
+     "8-30": {
+      "tx": 0.25990194765721103,
+      "ty": 0.3552479110599238,
+      "roll": 0.34023501190717315,
+      "scale": 0.05592938792756366
+     },
+     "calm": {
+      "tx": 0.5590149077431187,
+      "ty": 0.9693365534179913,
+      "roll": 0.8668338324088168,
+      "scale": 0.08075607404078403
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.8825214949886828,
+      "ty": 0.6555467048411907,
+      "roll": 0.5006427395074896,
+      "scale": 0.5012184004022374
+     },
+     "2-8": {
+      "tx": 0.8847188903601486,
+      "ty": 0.5920039287609424,
+      "roll": 0.4374122369090382,
+      "scale": 0.5159102090897569
+     },
+     "8-30": {
+      "tx": 0.08348375460235138,
+      "ty": 0.09991243318693488,
+      "roll": 0.20630222664283285,
+      "scale": 0.04583985648188769
+     },
+     "calm": {
+      "tx": 0.14841349791658778,
+      "ty": 0.20093257747148924,
+      "roll": 0.48891031759419523,
+      "scale": 0.050523169761949004
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 515,
+     "frame_after": 516,
+     "t_s": 8.6086,
+     "px": 1.204,
+     "vec": [
+      -0.235,
+      -0.693,
+      0.954,
+      -0.06
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.644,
+       "present": false
+      },
+      "original": {
+       "proj_px": -0.99,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 508,
+     "frame_after": 509,
+     "t_s": 8.4918,
+     "px": 0.78,
+     "vec": [
+      0.288,
+      0.42,
+      -0.545,
+      -0.228
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.526,
+       "present": false
+      },
+      "original": {
+       "proj_px": -2.019,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 775,
+     "frame_after": 776,
+     "t_s": 12.9463,
+     "px": 0.715,
+     "vec": [
+      0.328,
+      -0.043,
+      -0.634,
+      -0.01
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.336,
+       "present": false
+      },
+      "original": {
+       "proj_px": -0.004,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 791,
+     "frame_after": 792,
+     "t_s": 13.2132,
+     "px": 0.512,
+     "vec": [
+      -0.114,
+      -0.103,
+      -0.485,
+      0.059
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.23,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.466,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 1327,
+     "frame_after": 1328,
+     "t_s": 22.1555,
+     "px": 0.501,
+     "vec": [
+      0.154,
+      0.183,
+      0.439,
+      0.042
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.248,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.081,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 900,
+    "frames": 1501,
+    "seconds": 18.18954610824585,
+    "fps": 82.51992606454061,
+    "codec": "prores",
+    "gb": 5.286265943,
+    "free_gb_after": 69.693927424,
+    "md5": "773366dacb864382aecdd47aa9f93974"
+   },
+   "eval_s": 37.99885702133179,
+   "wall_s": 74.06952595710754,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0034_15-40.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0034-4c025de1-93beefde41/plan.spplan",
+   "plan_sha": "e54424cbabe25e92",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0034_15-40_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0034-4c025de1-93beefde41/plan.spplan",
+    "width": 960,
+    "start_record": 900,
+    "seconds": 6.1,
+    "frames": 720,
+    "fill_frac_mean": 0.0013857542438271604,
+    "fill_frac_p95": 0.00881201774691358,
+    "fill_frac_max": 0.0495216049382716,
+    "frames_with_fill": 0.11527777777777778,
+    "plan_uncovered_mean": 2.797538541860551e-06,
+    "plan_uncovered_p99": 8.821286042802884e-05,
+    "plan_uncovered_max": 0.000433609850006178,
+    "seam_ratio_pooled": 1.0588966872916834,
+    "seam_ratio_median": 1.037922678236032,
+    "seam_ratio_p95": 1.206495035425522,
+    "seam_frames": 82,
+    "flicker_fill": 12.112852868826494,
+    "flicker_inner": 6.718552188596863,
+    "flicker_ratio_pooled": 1.8028962980127128,
+    "flicker_ratio_median": 1.4134036426683032,
+    "flicker_ratio_p95": 7.45845304028788,
+    "flicker_frames": 69,
+    "wall_s": 7.554341793060303
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "93beefde41"
+   },
+   "base_plan_sha": "e54424cbabe25e92"
+  },
+  "DJI_0034:1-15": {
+   "window": "DJI_0034:1-15",
+   "clip": "DJI_0034",
+   "cam": "o3",
+   "set": "heldout",
+   "start": 1.0,
+   "dur": 14.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.13777774144333388,
+    "calm": 0.13910223365772556,
+    "calm_frac": 0.8628205128205129,
+    "b28": 0.10038994202775972,
+    "b830": 0.09087384864428591,
+    "roll_deg": 0.007390089664712171,
+    "roll830_deg": 0.005461552595004847,
+    "jello": 0.2938858828698148,
+    "row_wobble": 0.28059370960906527,
+    "corner_self": 0.6620833765785247,
+    "corner": 0.6013419049635018,
+    "corner_ref": 0.6443036578760267,
+    "jumps1": 0,
+    "jumps05": 0,
+    "jump_max": 0.0,
+    "crop_fit": 0.6235442509320859,
+    "crop_paired": 0.6235453571428573,
+    "crop_ref": 0.6440832142857144,
+    "crop_plan": 0.6235595134566773,
+    "win": 1.0,
+    "win_n": 13,
+    "win_p": 0.000244140625,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.13476799751242932,
+    "noise": 0.026814853209324047,
+    "fails": [
+     "crop_footprint"
+    ],
+    "passed": false,
+    "calm_limit": 0.3828381780288678,
+    "plan_sha": "e54424cbabe25e92",
+    "render_md5": "119cdeeaf3b923f5743c19cd234bc196"
+   },
+   "orig": {
+    "hf": 1.394028174410045,
+    "calm": 1.3043363363103913,
+    "b28": 1.4386467070111677,
+    "b830": 0.20128803504900086,
+    "roll_deg": 0.053772143083398845,
+    "roll830_deg": 0.01023418967782105,
+    "jello": 0.24817005067267578,
+    "row_wobble": 0.2132468213272827,
+    "corner_wobble": 0.7399235199685233,
+    "footprint": NaN,
+    "med1s": 1.0270032357910155,
+    "spikes_gt1": 5
+   },
+   "gf": {
+    "hf": 0.8241404231277247,
+    "calm": 0.7656763560577357,
+    "b28": 0.7565194970183952,
+    "b830": 0.3375921988951882,
+    "roll_deg": 0.07074020508183843,
+    "roll830_deg": 0.02866447723852932,
+    "jello": 0.2930378796589794,
+    "row_wobble": 0.27860401227368464,
+    "corner_wobble": 0.6762485209749397,
+    "footprint": 0.6440837292078483,
+    "med1s": 0.7835856195956779,
+    "spikes_gt1": 8
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.07949968301388805,
+      "ty": 0.06786150726218698,
+      "roll": 0.08202243325742986,
+      "scale": 0.03646426624178928
+     },
+     "2-8": {
+      "tx": 0.061446883487484213,
+      "ty": 0.052916130271731664,
+      "roll": 0.05176096942193637,
+      "scale": 0.02868982697018216
+     },
+     "8-30": {
+      "tx": 0.04843692906191145,
+      "ty": 0.04174119247184068,
+      "roll": 0.06061764518836531,
+      "scale": 0.022250712647511824
+     },
+     "calm": {
+      "tx": 0.07993838731826922,
+      "ty": 0.07017823702136707,
+      "roll": 0.08151380500608289,
+      "scale": 0.037280025261874086
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.456331628090854,
+      "ty": 1.1679608420313672,
+      "roll": 0.5968157650680996,
+      "scale": 0.12146773357773524
+     },
+     "2-8": {
+      "tx": 0.4502261874289158,
+      "ty": 1.2227857744716708,
+      "roll": 0.5965235923512416,
+      "scale": 0.12631421640253146
+     },
+     "8-30": {
+      "tx": 0.08644241051031419,
+      "ty": 0.14054147504516676,
+      "roll": 0.11358903313464044,
+      "scale": 0.01975368478842462
+     },
+     "calm": {
+      "tx": 0.4368433169611649,
+      "ty": 1.0815352022261229,
+      "roll": 0.573903749728848,
+      "scale": 0.10666436630313288
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.1231157265816628,
+      "ty": 0.21215512495909508,
+      "roll": 0.78514389042504,
+      "scale": 0.05088446897863897
+     },
+     "2-8": {
+      "tx": 0.1030813325868825,
+      "ty": 0.19637162642714484,
+      "roll": 0.7218835929096659,
+      "scale": 0.04492494700350853
+     },
+     "8-30": {
+      "tx": 0.06484203091127476,
+      "ty": 0.08865064533755734,
+      "roll": 0.31814636598836993,
+      "scale": 0.026228928148485695
+     },
+     "calm": {
+      "tx": 0.12204090413874046,
+      "ty": 0.2106989992426025,
+      "roll": 0.724079799308215,
+      "scale": 0.05177524403411315
+     }
+    }
+   },
+   "jump_events": [],
+   "render": {
+    "start_frame": 60,
+    "frames": 842,
+    "seconds": 10.230095863342285,
+    "fps": 82.3061690963382,
+    "codec": "prores",
+    "gb": 2.991180919,
+    "free_gb_after": 71.995666432,
+    "md5": "119cdeeaf3b923f5743c19cd234bc196"
+   },
+   "eval_s": 20.633448839187622,
+   "wall_s": 43.620028018951416,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0034_1-15.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0034-4c025de1-93beefde41/plan.spplan",
+   "plan_sha": "e54424cbabe25e92",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0034_1-15_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0034-4c025de1-93beefde41/plan.spplan",
+    "width": 960,
+    "start_record": 60,
+    "seconds": 5.7,
+    "frames": 720,
+    "fill_frac_mean": 0.0,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.0,
+    "frames_with_fill": 0.0,
+    "plan_uncovered_mean": 0.0,
+    "plan_uncovered_p99": 0.0,
+    "plan_uncovered_max": 0.0,
+    "wall_s": 7.031067132949829
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "93beefde41"
+   },
+   "base_plan_sha": "e54424cbabe25e92"
+  },
+  "DJI_0025:15-40": {
+   "window": "DJI_0025:15-40",
+   "clip": "DJI_0025",
+   "cam": "o3",
+   "set": "gate",
+   "start": 15.0,
+   "dur": 25.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.3034323823575918,
+    "calm": 0.31382291421729935,
+    "calm_frac": 0.6126564673157163,
+    "b28": 0.28328514062920235,
+    "b830": 0.12077845942089584,
+    "roll_deg": 0.01538197181415091,
+    "roll830_deg": 0.007926574158738913,
+    "jello": 0.7435529578932657,
+    "row_wobble": 0.7241283135949076,
+    "corner_self": 3.579242672326413,
+    "corner": 0.6909354618817171,
+    "corner_ref": 0.6828746994135377,
+    "jumps1": 0,
+    "jumps05": 3,
+    "jump_max": 0.972,
+    "crop_fit": 0.6292580910050267,
+    "crop_paired": 0.6292576000000001,
+    "crop_ref": 0.6332792,
+    "crop_plan": 0.6293074357489804,
+    "win": 1.0,
+    "win_n": 23,
+    "win_p": 2.384185791015625e-07,
+    "win_orig": 0.9565217391304348,
+    "lag": 0,
+    "med1s": 0.15991731055082103,
+    "noise": 0.062093044274243746,
+    "fails": [
+     "calm_cruise",
+     "jello"
+    ],
+    "passed": false,
+    "calm_limit": 0.29863146531432677,
+    "plan_sha": "4fb52905ca463a1f",
+    "render_md5": "250a774ea9a2dd9fb79f6670db7defc9"
+   },
+   "orig": {
+    "hf": 2.787328414292784,
+    "calm": 0.9082956542957145,
+    "b28": 2.9018909683034195,
+    "b830": 0.2317254232256263,
+    "roll_deg": 0.1721735976522575,
+    "roll830_deg": 0.0103341407513676,
+    "jello": 0.4677032115806981,
+    "row_wobble": 0.4121777311543073,
+    "corner_wobble": 1.3107544417469306,
+    "footprint": NaN,
+    "med1s": 0.8022887503601556,
+    "spikes_gt1": 4
+   },
+   "gf": {
+    "hf": 0.9685118207919211,
+    "calm": 0.5972629306286535,
+    "b28": 0.961577756194228,
+    "b830": 0.22707607364082089,
+    "roll_deg": 0.05126022620413654,
+    "roll830_deg": 0.015626601012266716,
+    "jello": 0.6077619454457316,
+    "row_wobble": 0.5829385064545168,
+    "corner_wobble": 1.2414079126727737,
+    "footprint": 0.6332792412852875,
+    "med1s": 0.40084209472421134,
+    "spikes_gt1": 4
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.14525891462906354,
+      "ty": 0.11145889664469157,
+      "roll": 0.1707241473020747,
+      "scale": 0.17146789282754277
+     },
+     "2-8": {
+      "tx": 0.13811398905178354,
+      "ty": 0.10191186256136953,
+      "roll": 0.1436785764206385,
+      "scale": 0.17362441037055262
+     },
+     "8-30": {
+      "tx": 0.05663655079948467,
+      "ty": 0.0485421530142676,
+      "roll": 0.08797686217526471,
+      "scale": 0.035825528274629585
+     },
+     "calm": {
+      "tx": 0.1621622288952978,
+      "ty": 0.11010169285786083,
+      "roll": 0.16058731205216983,
+      "scale": 0.18514201426267288
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.4517762622455632,
+      "ty": 1.4031419537213,
+      "roll": 1.910950754705613,
+      "scale": 0.20249751677847147
+     },
+     "2-8": {
+      "tx": 1.5020345984015613,
+      "ty": 1.454530967102904,
+      "roll": 2.001915143848234,
+      "scale": 0.20381040134255043
+     },
+     "8-30": {
+      "tx": 0.15569847143441715,
+      "ty": 0.12491755875994986,
+      "roll": 0.11469838777456141,
+      "scale": 0.02635414801226607
+     },
+     "calm": {
+      "tx": 0.5637796728510733,
+      "ty": 0.4662732980649007,
+      "roll": 0.5226724460905197,
+      "scale": 0.12867090464378464
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.49815505510064756,
+      "ty": 0.5644444267993926,
+      "roll": 0.5689360580651769,
+      "scale": 0.21810763164024247
+     },
+     "2-8": {
+      "tx": 0.5005273073801842,
+      "ty": 0.5673747318197877,
+      "roll": 0.5504004710219059,
+      "scale": 0.22192212815660556
+     },
+     "8-30": {
+      "tx": 0.08585230239746808,
+      "ty": 0.11207451074803787,
+      "roll": 0.17343928108063805,
+      "scale": 0.03938331133874559
+     },
+     "calm": {
+      "tx": 0.23475888361285205,
+      "ty": 0.2620566020534434,
+      "roll": 0.4395650855826919,
+      "scale": 0.19929914130487134
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 939,
+     "frame_after": 940,
+     "t_s": 15.6823,
+     "px": 0.972,
+     "vec": [
+      0.147,
+      -0.082,
+      -0.95,
+      -0.12
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.984,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.338,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 872,
+     "frame_after": 873,
+     "t_s": 14.5646,
+     "px": 0.873,
+     "vec": [
+      -0.004,
+      -0.39,
+      -0.78,
+      0.004
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.644,
+       "present": false
+      },
+      "original": {
+       "proj_px": -0.172,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 867,
+     "frame_after": 868,
+     "t_s": 14.4811,
+     "px": 0.768,
+     "vec": [
+      -0.061,
+      -0.033,
+      -0.763,
+      0.048
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.872,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.235,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 900,
+    "frames": 1501,
+    "seconds": 18.07738971710205,
+    "fps": 83.03189915632478,
+    "codec": "prores",
+    "gb": 4.906491255,
+    "free_gb_after": 70.068752384,
+    "md5": "250a774ea9a2dd9fb79f6670db7defc9"
+   },
+   "eval_s": 40.45492720603943,
+   "wall_s": 74.89088892936707,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0025_15-40.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0025-4c025de1-d48f945dcd/plan.spplan",
+   "plan_sha": "4fb52905ca463a1f",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0025_15-40_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0025-4c025de1-d48f945dcd/plan.spplan",
+    "width": 960,
+    "start_record": 900,
+    "seconds": 5.6,
+    "frames": 720,
+    "fill_frac_mean": 0.0002671039094650206,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.02806712962962963,
+    "frames_with_fill": 0.022222222222222223,
+    "plan_uncovered_mean": 1.6804730525639875e-08,
+    "plan_uncovered_p99": 0.0,
+    "plan_uncovered_max": 1.1348094631102867e-05,
+    "seam_ratio_pooled": 0.9842339268472704,
+    "seam_ratio_median": 0.9872156359355942,
+    "seam_ratio_p95": 1.1234052685905709,
+    "seam_frames": 16,
+    "flicker_fill": 2.9094853890793666,
+    "flicker_inner": 1.585339286497661,
+    "flicker_ratio_pooled": 1.8352446153700104,
+    "flicker_ratio_median": 1.3197472976722624,
+    "flicker_ratio_p95": 3.3364672521824073,
+    "flicker_frames": 14,
+    "wall_s": 6.9352593421936035
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "d48f945dcd"
+   },
+   "base_plan_sha": "4fb52905ca463a1f"
+  },
+  "DJI_0025:1-15": {
+   "window": "DJI_0025:1-15",
+   "clip": "DJI_0025",
+   "cam": "o3",
+   "set": "heldout",
+   "start": 1.0,
+   "dur": 14.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.3945314234414454,
+    "calm": 0.14386717408095331,
+    "calm_frac": 0.6294871794871795,
+    "b28": 0.3984368204622844,
+    "b830": 0.09117395807302377,
+    "roll_deg": 0.010667505289736647,
+    "roll830_deg": 0.005288188600453153,
+    "jello": 1.0176718924154442,
+    "row_wobble": 0.9717575568555387,
+    "corner_self": 2.050469877696226,
+    "corner": 0.5074111193087812,
+    "corner_ref": 0.5976663718212674,
+    "jumps1": 0,
+    "jumps05": 4,
+    "jump_max": 0.97,
+    "crop_fit": 0.6291666747922137,
+    "crop_paired": 0.6291660714285713,
+    "crop_ref": 0.59551,
+    "crop_plan": 0.6292510684953054,
+    "win": 1.0,
+    "win_n": 13,
+    "win_p": 0.000244140625,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.14991369949601632,
+    "noise": 0.06339006581160515,
+    "fails": [
+     "jello"
+    ],
+    "passed": false,
+    "calm_limit": 0.2867499803584558,
+    "plan_sha": "4fb52905ca463a1f",
+    "render_md5": "15c340fa187351af2bc9fe066f2335ce"
+   },
+   "orig": {
+    "hf": 3.8795944666245616,
+    "calm": 0.9619750775222968,
+    "b28": 3.857561671870114,
+    "b830": 0.5809662412244798,
+    "roll_deg": 0.09371617518013535,
+    "roll830_deg": 0.013531635500443125,
+    "jello": 1.1132725350011525,
+    "row_wobble": 0.7354187162721784,
+    "corner_wobble": 1.8898144515020998,
+    "footprint": NaN,
+    "med1s": 0.7864548615925007,
+    "spikes_gt1": 5
+   },
+   "gf": {
+    "hf": 0.9897518976983289,
+    "calm": 0.5734999607169116,
+    "b28": 0.9652211919408359,
+    "b830": 0.2612091623436139,
+    "roll_deg": 0.04117458091452909,
+    "roll830_deg": 0.01766519942047185,
+    "jello": 0.842408820604864,
+    "row_wobble": 0.7132929425202914,
+    "corner_wobble": 1.7945761948743808,
+    "footprint": 0.5955102493906168,
+    "med1s": 0.5325799681770891,
+    "spikes_gt1": 10
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.16645283718244827,
+      "ty": 0.30922298282766697,
+      "roll": 0.11839839303015853,
+      "scale": 0.13531985994554882
+     },
+     "2-8": {
+      "tx": 0.17091033076827283,
+      "ty": 0.31801423526507927,
+      "roll": 0.1024835999943821,
+      "scale": 0.13381187031699585
+     },
+     "8-30": {
+      "tx": 0.037406398139549366,
+      "ty": 0.044639997168261905,
+      "roll": 0.05869348224616756,
+      "scale": 0.03841611385295753
+     },
+     "calm": {
+      "tx": 0.05218478700272237,
+      "ty": 0.0939805890376175,
+      "roll": 0.08305385030962119,
+      "scale": 0.04737318457111908
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.3120825173138977,
+      "ty": 3.4483095278217912,
+      "roll": 1.0401536480076854,
+      "scale": 0.5974399401554135
+     },
+     "2-8": {
+      "tx": 1.4124098311645013,
+      "ty": 3.3809519923247726,
+      "roll": 1.0423811676477683,
+      "scale": 0.6070301870909206
+     },
+     "8-30": {
+      "tx": 0.1646306897495085,
+      "ty": 0.5338175072448156,
+      "roll": 0.15018730760450022,
+      "scale": 0.05386233404285362
+     },
+     "calm": {
+      "tx": 0.21097452292457805,
+      "ty": 0.888144657884221,
+      "roll": 0.2640683361872261,
+      "scale": 0.14950846446206914
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.33937837870205634,
+      "ty": 0.7898567646780439,
+      "roll": 0.4569957156394183,
+      "scale": 0.17807959525604256
+     },
+     "2-8": {
+      "tx": 0.3386924415230183,
+      "ty": 0.7844133564823033,
+      "roll": 0.4119977449118373,
+      "scale": 0.17858590030176652
+     },
+     "8-30": {
+      "tx": 0.06539296560391,
+      "ty": 0.15402471640379628,
+      "roll": 0.19606563738510127,
+      "scale": 0.04229230562741166
+     },
+     "calm": {
+      "tx": 0.11810190253311716,
+      "ty": 0.36735467849911946,
+      "roll": 0.42035245764176066,
+      "scale": 0.05751953667839812
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 543,
+     "frame_after": 544,
+     "t_s": 9.0757,
+     "px": 1.142,
+     "vec": [
+      -0.049,
+      -1.104,
+      -0.207,
+      -0.199
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.42,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.265,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 135,
+     "frame_after": 136,
+     "t_s": 2.2689,
+     "px": 0.97,
+     "vec": [
+      0.386,
+      -0.068,
+      0.107,
+      0.881
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.67,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.457,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 132,
+     "frame_after": 133,
+     "t_s": 2.2189,
+     "px": 0.818,
+     "vec": [
+      -0.209,
+      -0.06,
+      0.785,
+      0.08
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.152,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.567,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 146,
+     "frame_after": 147,
+     "t_s": 2.4525,
+     "px": 0.716,
+     "vec": [
+      -0.279,
+      0.265,
+      0.351,
+      -0.491
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.922,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.146,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 143,
+     "frame_after": 144,
+     "t_s": 2.4024,
+     "px": 0.645,
+     "vec": [
+      0.504,
+      0.082,
+      0.149,
+      0.365
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.1,
+       "present": false
+      },
+      "original": {
+       "proj_px": 1.365,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 60,
+    "frames": 842,
+    "seconds": 10.355382204055786,
+    "fps": 81.31037400726962,
+    "codec": "prores",
+    "gb": 2.616087031,
+    "free_gb_after": 72.345604096,
+    "md5": "15c340fa187351af2bc9fe066f2335ce"
+   },
+   "eval_s": 22.036298036575317,
+   "wall_s": 44.21752405166626,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0025_1-15.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0025-4c025de1-d48f945dcd/plan.spplan",
+   "plan_sha": "4fb52905ca463a1f",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0025_1-15_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0025-4c025de1-d48f945dcd/plan.spplan",
+    "width": 960,
+    "start_record": 60,
+    "seconds": 5.6,
+    "frames": 720,
+    "fill_frac_mean": 0.00025374281978737996,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.02797260802469136,
+    "frames_with_fill": 0.019444444444444445,
+    "plan_uncovered_mean": 1.2165639620636486e-07,
+    "plan_uncovered_p99": 0.0,
+    "plan_uncovered_max": 8.75926052685827e-05,
+    "seam_ratio_pooled": 0.818742542848832,
+    "seam_ratio_median": 0.7520835749875379,
+    "seam_ratio_p95": 1.0453557568412897,
+    "seam_frames": 14,
+    "flicker_fill": 12.562044363755446,
+    "flicker_inner": 2.256323713522691,
+    "flicker_ratio_pooled": 5.567483197764616,
+    "flicker_ratio_median": 4.4771976552407775,
+    "flicker_ratio_p95": 18.230847227730806,
+    "flicker_frames": 13,
+    "wall_s": 6.792167901992798
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "d48f945dcd"
+   },
+   "base_plan_sha": "4fb52905ca463a1f"
+  },
+  "DJI_0028:8-33": {
+   "window": "DJI_0028:8-33",
+   "clip": "DJI_0028",
+   "cam": "o3",
+   "set": "gate",
+   "start": 8.0,
+   "dur": 25.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.8300495601346797,
+    "calm": 0.13911615083751688,
+    "calm_frac": 0.20152883947185546,
+    "b28": 0.7842706183230721,
+    "b830": 0.2946073810533831,
+    "roll_deg": 0.05036624062838569,
+    "roll830_deg": 0.021414639680862494,
+    "jello": 1.2272351355059343,
+    "row_wobble": 1.1683536217563917,
+    "corner_self": 3.940739656404972,
+    "corner": 0.9194953797125452,
+    "corner_ref": 0.9122651670800991,
+    "jumps1": 4,
+    "jumps05": 4,
+    "jump_max": 1.738,
+    "crop_fit": 0.6327327004640478,
+    "crop_paired": 0.6327329166666668,
+    "crop_ref": 0.6121795833333333,
+    "crop_plan": 0.6331055057645922,
+    "win": 0.9130434782608695,
+    "win_n": 23,
+    "win_p": 2.09808349609375e-05,
+    "win_orig": 0.8695652173913043,
+    "lag": 0,
+    "med1s": 0.7818262959550817,
+    "noise": 0.09858400561842094,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": 0.4627020422516913,
+    "plan_sha": "2e3aaddac25b8dd0",
+    "render_md5": "24834fb3aa7c7cf8e9cbdf69bc95c325"
+   },
+   "orig": {
+    "hf": 1.9781117580611085,
+    "calm": 0.9333714954620671,
+    "b28": 1.898326746995364,
+    "b830": 0.47788814881850117,
+    "roll_deg": 0.09635663888371127,
+    "roll830_deg": 0.026238780541951234,
+    "jello": 1.4692644425909376,
+    "row_wobble": 1.281728683324816,
+    "corner_wobble": 3.1807646625597474,
+    "footprint": NaN,
+    "med1s": 1.6120924264823888,
+    "spikes_gt1": 7
+   },
+   "gf": {
+    "hf": 1.1443610332968934,
+    "calm": 0.9254040845033826,
+    "b28": 1.079269168191728,
+    "b830": 0.38369089654836075,
+    "roll_deg": 0.07028395442996521,
+    "roll830_deg": 0.028224378360186486,
+    "jello": 1.2842957268989477,
+    "row_wobble": 1.1148108193942299,
+    "corner_wobble": 5.904086967818732,
+    "footprint": 0.6121796827700413,
+    "med1s": 0.9984680712794599,
+    "spikes_gt1": 15
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.3388975190450925,
+      "ty": 0.34703730379697756,
+      "roll": 0.5590137329585863,
+      "scale": 0.3757652192551715
+     },
+     "2-8": {
+      "tx": 0.3443443389829671,
+      "ty": 0.3124901686187439,
+      "roll": 0.5018498536537439,
+      "scale": 0.3834110038582383
+     },
+     "8-30": {
+      "tx": 0.07290945766385004,
+      "ty": 0.14659964943178488,
+      "roll": 0.23768058760405641,
+      "scale": 0.059111767161578926
+     },
+     "calm": {
+      "tx": 0.06461432336876226,
+      "ty": 0.05805691994154286,
+      "roll": 0.0894954397970999,
+      "scale": 0.06162996788794169
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.9520096118071997,
+      "ty": 1.3432653555582945,
+      "roll": 1.0694600932230096,
+      "scale": 0.24186177863936095
+     },
+     "2-8": {
+      "tx": 0.9039322316007921,
+      "ty": 1.3058387621040473,
+      "roll": 1.013339024593287,
+      "scale": 0.23340974198629205
+     },
+     "8-30": {
+      "tx": 0.22814875278817845,
+      "ty": 0.29877867050864365,
+      "roll": 0.29122361478713765,
+      "scale": 0.04738503584226499
+     },
+     "calm": {
+      "tx": 0.5401508217311015,
+      "ty": 0.6613427708439916,
+      "roll": 0.37133354394509555,
+      "scale": 0.06447152020759683
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.48846746600099034,
+      "ty": 0.5341509811951978,
+      "roll": 0.7800799750546183,
+      "scale": 0.4208558791247879
+     },
+     "2-8": {
+      "tx": 0.4770843528285708,
+      "ty": 0.4978444303823533,
+      "roll": 0.7169330577018639,
+      "scale": 0.4187724580329201
+     },
+     "8-30": {
+      "tx": 0.09004331647919522,
+      "ty": 0.18301833560253977,
+      "roll": 0.31326171877658937,
+      "scale": 0.08650022909753197
+     },
+     "calm": {
+      "tx": 0.2430609309474498,
+      "ty": 0.37116756821120256,
+      "roll": 0.8087720049950057,
+      "scale": 0.07359744361758373
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 993,
+     "frame_after": 994,
+     "t_s": 16.5832,
+     "px": 3.12,
+     "vec": [
+      -0.611,
+      3.048,
+      0.207,
+      -0.174
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 3.272,
+       "present": true
+      },
+      "original": {
+       "proj_px": 1.278,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 982,
+     "frame_after": 983,
+     "t_s": 16.3997,
+     "px": 2.722,
+     "vec": [
+      0.303,
+      -2.165,
+      1.582,
+      0.357
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.799,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.234,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 987,
+     "frame_after": 988,
+     "t_s": 16.4831,
+     "px": 2.686,
+     "vec": [
+      0.691,
+      -2.392,
+      -0.954,
+      0.322
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.832,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.779,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 1257,
+     "frame_after": 1258,
+     "t_s": 20.9876,
+     "px": 1.987,
+     "vec": [
+      0.142,
+      0.475,
+      1.925,
+      -0.002
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.901,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.783,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 615,
+     "frame_after": 616,
+     "t_s": 10.2769,
+     "px": 1.738,
+     "vec": [
+      -1.282,
+      0.031,
+      -0.302,
+      1.133
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.267,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.094,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 1461,
+     "frame_after": 1462,
+     "t_s": 24.391,
+     "px": 1.561,
+     "vec": [
+      -0.013,
+      -0.596,
+      -1.442,
+      0.016
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.598,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.034,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 1047,
+     "frame_after": 1048,
+     "t_s": 17.4841,
+     "px": 1.528,
+     "vec": [
+      -0.118,
+      -0.506,
+      -1.431,
+      0.127
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.534,
+       "present": false
+      },
+      "original": {
+       "proj_px": -0.161,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 595,
+     "frame_after": 596,
+     "t_s": 9.9433,
+     "px": 1.23,
+     "vec": [
+      -0.906,
+      0.05,
+      -0.244,
+      0.794
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.879,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.384,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 766,
+     "frame_after": 767,
+     "t_s": 12.7961,
+     "px": 1.151,
+     "vec": [
+      -0.067,
+      0.227,
+      1.126,
+      0.002
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.218,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.044,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 480,
+    "frames": 1501,
+    "seconds": 17.981728076934814,
+    "fps": 83.47362353484449,
+    "codec": "prores",
+    "gb": 5.407706243,
+    "free_gb_after": 69.569536,
+    "md5": "24834fb3aa7c7cf8e9cbdf69bc95c325"
+   },
+   "eval_s": 40.6672260761261,
+   "wall_s": 76.78203082084656,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0028_8-33.json",
+   "lost": [
+    [
+     26.5,
+     1.389,
+     1.245,
+     287.0
+    ],
+    [
+     30.5,
+     0.773,
+     0.764,
+     335.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0028-4c025de1-0b7893635e/plan.spplan",
+   "plan_sha": "2e3aaddac25b8dd0",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0028_8-33_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0028-4c025de1-0b7893635e/plan.spplan",
+    "width": 960,
+    "start_record": 480,
+    "seconds": 6.1,
+    "frames": 720,
+    "fill_frac_mean": 0.0011080193329903979,
+    "fill_frac_p95": 0.009794849537037024,
+    "fill_frac_max": 0.030059799382716048,
+    "frames_with_fill": 0.09027777777777778,
+    "plan_uncovered_mean": 4.3843656488067813e-07,
+    "plan_uncovered_p99": 3.973229911480035e-07,
+    "plan_uncovered_max": 0.00010395248682470992,
+    "seam_ratio_pooled": 1.0137615979625771,
+    "seam_ratio_median": 1.004027453658404,
+    "seam_ratio_p95": 1.160816337393983,
+    "seam_frames": 65,
+    "flicker_fill": 4.830019127238881,
+    "flicker_inner": 1.579674479636279,
+    "flicker_ratio_pooled": 3.0576040757150142,
+    "flicker_ratio_median": 0.9498867079781962,
+    "flicker_ratio_p95": 6.865535000562532,
+    "flicker_frames": 44,
+    "wall_s": 7.636609792709351
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "0b7893635e"
+   },
+   "base_plan_sha": "2e3aaddac25b8dd0"
+  },
+  "DJI_0028:38-58": {
+   "window": "DJI_0028:38-58",
+   "clip": "DJI_0028",
+   "cam": "o3",
+   "set": "heldout",
+   "start": 38.0,
+   "dur": 20.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 1.902273061555743,
+    "calm": 0.4046626855366684,
+    "calm_frac": 0.31343283582089554,
+    "b28": 1.8933193961157684,
+    "b830": 0.20134334784385208,
+    "roll_deg": 0.03139048136627591,
+    "roll830_deg": 0.014221489629020085,
+    "jello": 0.8854795873713732,
+    "row_wobble": 0.8096412983976816,
+    "corner_self": 2.4580500517042423,
+    "corner": 1.1636308204167918,
+    "corner_ref": 1.2038970037455532,
+    "jumps1": 3,
+    "jumps05": 13,
+    "jump_max": 1.672,
+    "crop_fit": 0.6332864819672034,
+    "crop_paired": 0.633286,
+    "crop_ref": 0.611677,
+    "crop_plan": 0.633320697115022,
+    "win": 0.9444444444444444,
+    "win_n": 18,
+    "win_p": 1.52587890625e-05,
+    "win_orig": 0.9444444444444444,
+    "lag": 0,
+    "med1s": 0.4637693537544104,
+    "noise": 0.12332046938068651,
+    "fails": [
+     "calm_cruise",
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": 0.3804711769634389,
+    "plan_sha": "2e3aaddac25b8dd0",
+    "render_md5": "56d1d45ce649f256cee9272e70abb0f7"
+   },
+   "orig": {
+    "hf": 5.210274469991784,
+    "calm": 1.9106050191300603,
+    "b28": 5.160586684747056,
+    "b830": 0.46741356931258765,
+    "roll_deg": 0.3274508904261131,
+    "roll830_deg": 0.020852472312453248,
+    "jello": 0.9565852358322241,
+    "row_wobble": 0.8734647645398488,
+    "corner_wobble": 2.674959695777662,
+    "footprint": NaN,
+    "med1s": 1.524130074004085,
+    "spikes_gt1": 16
+   },
+   "gf": {
+    "hf": 4.606972494017838,
+    "calm": 0.7609423539268778,
+    "b28": 4.4729292284661755,
+    "b830": 0.3030748164813431,
+    "roll_deg": 0.12514198839625348,
+    "roll830_deg": 0.02373820211581394,
+    "jello": 1.1893648916392112,
+    "row_wobble": 0.8937369315116035,
+    "corner_wobble": 2.230236772474271,
+    "footprint": 0.6116763733900513,
+    "med1s": 0.7483436941229924,
+    "spikes_gt1": 11
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 1.4592266952129211,
+      "ty": 0.2058490431422326,
+      "roll": 0.3484022223814576,
+      "scale": 1.1513219860559099
+     },
+     "2-8": {
+      "tx": 1.4751920365040367,
+      "ty": 0.19620457003771322,
+      "roll": 0.30971211657942327,
+      "scale": 1.128737774101434
+     },
+     "8-30": {
+      "tx": 0.0790158756943072,
+      "ty": 0.05852472913411598,
+      "roll": 0.15784398252804732,
+      "scale": 0.0771736248254289
+     },
+     "calm": {
+      "tx": 0.22276191354087585,
+      "ty": 0.1328414757253159,
+      "roll": 0.2919794016392637,
+      "scale": 0.10597259214935593
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 3.0292640279357883,
+      "ty": 1.5449055965490017,
+      "roll": 3.6343698146601473,
+      "scale": 1.541149651961531
+     },
+     "2-8": {
+      "tx": 2.9802988783091555,
+      "ty": 1.4968780895981457,
+      "roll": 3.6658378145818733,
+      "scale": 1.4389102226339183
+     },
+     "8-30": {
+      "tx": 0.2065387016663422,
+      "ty": 0.2950602021234794,
+      "roll": 0.23144110506096494,
+      "scale": 0.18759451351925455
+     },
+     "calm": {
+      "tx": 0.7815667493124883,
+      "ty": 1.5026085029824015,
+      "roll": 0.8798600241856737,
+      "scale": 0.08705733799663434
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 2.677458152324116,
+      "ty": 0.48750440846372867,
+      "roll": 1.3889480177685425,
+      "scale": 3.447981476002348
+     },
+     "2-8": {
+      "tx": 2.524585539754498,
+      "ty": 0.486076231413185,
+      "roll": 1.3379975378508278,
+      "scale": 3.4069130046553555
+     },
+     "8-30": {
+      "tx": 0.07933023276935779,
+      "ty": 0.09929399878367585,
+      "roll": 0.263469753011659,
+      "scale": 0.07928082748989276
+     },
+     "calm": {
+      "tx": 0.14187000198127528,
+      "ty": 0.25442423813527293,
+      "roll": 0.6555648043290822,
+      "scale": 0.25378980064586704
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 305,
+     "frame_after": 306,
+     "t_s": 5.1051,
+     "px": 2.125,
+     "vec": [
+      -0.015,
+      0.507,
+      2.064,
+      -0.04
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.104,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.079,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 257,
+     "frame_after": 258,
+     "t_s": 4.3043,
+     "px": 1.672,
+     "vec": [
+      0.099,
+      0.511,
+      1.589,
+      -0.015
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.663,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.42,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 310,
+     "frame_after": 311,
+     "t_s": 5.1885,
+     "px": 1.613,
+     "vec": [
+      -0.023,
+      0.22,
+      1.598,
+      -0.02
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.615,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.105,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 253,
+     "frame_after": 254,
+     "t_s": 4.2376,
+     "px": 1.339,
+     "vec": [
+      -0.088,
+      0.391,
+      1.277,
+      0.024
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.149,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.27,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 299,
+     "frame_after": 300,
+     "t_s": 5.005,
+     "px": 1.284,
+     "vec": [
+      -0.241,
+      0.157,
+      1.251,
+      -0.006
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.43,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.177,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 1091,
+     "frame_after": 1092,
+     "t_s": 18.2182,
+     "px": 1.077,
+     "vec": [
+      -0.109,
+      -0.04,
+      -1.071,
+      -0.032
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.962,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.258,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 437,
+     "frame_after": 438,
+     "t_s": 7.3073,
+     "px": 0.815,
+     "vec": [
+      0.395,
+      -0.083,
+      -0.708,
+      -0.03
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.532,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.213,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 1095,
+     "frame_after": 1096,
+     "t_s": 18.2849,
+     "px": 0.788,
+     "vec": [
+      0.066,
+      0.049,
+      -0.784,
+      -0.011
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.78,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.437,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 196,
+     "frame_after": 197,
+     "t_s": 3.2866,
+     "px": 0.695,
+     "vec": [
+      0.076,
+      0.023,
+      -0.69,
+      -0.003
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.06,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.101,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 705,
+     "frame_after": 706,
+     "t_s": 11.7784,
+     "px": 0.673,
+     "vec": [
+      0.589,
+      -0.164,
+      0.008,
+      -0.281
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.317,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.271,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 2278,
+    "frames": 1201,
+    "seconds": 14.45163631439209,
+    "fps": 83.10477608711676,
+    "codec": "prores",
+    "gb": 4.339279623,
+    "free_gb_after": 70.62089728,
+    "md5": "56d1d45ce649f256cee9272e70abb0f7"
+   },
+   "eval_s": 32.82084012031555,
+   "wall_s": 62.57552194595337,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0028_38-58.json",
+   "lost": [
+    [
+     39.5,
+     0.529,
+     0.473,
+     104.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0028-4c025de1-0b7893635e/plan.spplan",
+   "plan_sha": "2e3aaddac25b8dd0",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0028_38-58_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0028-4c025de1-0b7893635e/plan.spplan",
+    "width": 960,
+    "start_record": 2278,
+    "seconds": 5.8,
+    "frames": 720,
+    "fill_frac_mean": 0.0007225142532578875,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.044486882716049385,
+    "frames_with_fill": 0.043055555555555555,
+    "plan_uncovered_mean": 3.3917812534768456e-06,
+    "plan_uncovered_p99": 6.28904593349905e-05,
+    "plan_uncovered_max": 0.0007769403164274991,
+    "seam_ratio_pooled": 1.0208981702539788,
+    "seam_ratio_median": 1.0353166695754052,
+    "seam_ratio_p95": 1.1191213740765704,
+    "seam_frames": 30,
+    "flicker_fill": 6.6784749031066895,
+    "flicker_inner": 7.26495768405773,
+    "flicker_ratio_pooled": 0.9192723748084559,
+    "flicker_ratio_median": 0.8995933212884698,
+    "flicker_ratio_p95": 1.524362134587028,
+    "flicker_frames": 27,
+    "wall_s": 7.032313823699951
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "0b7893635e"
+   },
+   "base_plan_sha": "2e3aaddac25b8dd0"
+  },
+  "DJI_0027:5-30": {
+   "window": "DJI_0027:5-30",
+   "clip": "DJI_0027",
+   "cam": "o3",
+   "set": "gate",
+   "start": 5.0,
+   "dur": 25.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.6245644644903818,
+    "calm": 0.17946519754671264,
+    "calm_frac": 0.23280055594162613,
+    "b28": 0.6147732350076744,
+    "b830": 0.12245601501322459,
+    "roll_deg": 0.019872041608283698,
+    "roll830_deg": 0.0073716361624191675,
+    "jello": 0.7983175344652665,
+    "row_wobble": 0.7304513741459304,
+    "corner_self": 1.2891880973305303,
+    "corner": 0.8774254538918411,
+    "corner_ref": 0.7908892356124677,
+    "jumps1": 0,
+    "jumps05": 4,
+    "jump_max": 0.868,
+    "crop_fit": 0.6036655196597199,
+    "crop_paired": 0.6036652,
+    "crop_ref": 0.5757186,
+    "crop_plan": 0.6036517784193681,
+    "win": 0.8260869565217391,
+    "win_n": 23,
+    "win_p": 3.266334533691406e-05,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.32403693139350764,
+    "noise": 0.10917038092251793,
+    "fails": [
+     "winrate_vs_gyroflow",
+     "corner_wobble"
+    ],
+    "passed": false,
+    "calm_limit": 0.2404853842741488,
+    "plan_sha": "a16da5184c9c834e",
+    "render_md5": "271ef4a607bf4fd783fa0203ac33f230"
+   },
+   "orig": {
+    "hf": 5.54344304602235,
+    "calm": 1.6595660131870997,
+    "b28": 5.559640417497968,
+    "b830": 0.46988034040042276,
+    "roll_deg": 0.3005043375211667,
+    "roll830_deg": 0.02719618251748822,
+    "jello": 1.0446636691769813,
+    "row_wobble": 0.8708413821618961,
+    "corner_wobble": 1.708305577068123,
+    "footprint": NaN,
+    "med1s": 2.072597783329975,
+    "spikes_gt1": 15
+   },
+   "gf": {
+    "hf": 3.053439152526271,
+    "calm": 0.4809707685482976,
+    "b28": 2.941801018709324,
+    "b830": 0.15770684687772035,
+    "roll_deg": 0.10567585378745299,
+    "roll830_deg": 0.007968018408324756,
+    "jello": 1.062042866190001,
+    "row_wobble": 0.946948532972924,
+    "corner_wobble": 1.0927996247248306,
+    "footprint": 0.5757188966647534,
+    "med1s": 0.3751959339351228,
+    "spikes_gt1": 7
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.4222219912568216,
+      "ty": 0.23738242628307826,
+      "roll": 0.22055932748521018,
+      "scale": 0.3268218584405159
+     },
+     "2-8": {
+      "tx": 0.40853457937412097,
+      "ty": 0.2240541728155225,
+      "roll": 0.21374340682376808,
+      "scale": 0.3393510153524408
+     },
+     "8-30": {
+      "tx": 0.06699519065172206,
+      "ty": 0.04451657965044539,
+      "roll": 0.08181761826480248,
+      "scale": 0.04279335836504431
+     },
+     "calm": {
+      "tx": 0.07655815163915607,
+      "ty": 0.11188093308636736,
+      "roll": 0.1073547900193976,
+      "scale": 0.04800221265412062
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 3.830157785188908,
+      "ty": 1.713453545374416,
+      "roll": 3.335290650882524,
+      "scale": 1.4140598880633821
+     },
+     "2-8": {
+      "tx": 3.849392520687943,
+      "ty": 1.7149921090565494,
+      "roll": 3.3421728021407873,
+      "scale": 1.407288818989502
+     },
+     "8-30": {
+      "tx": 0.23155326881325627,
+      "ty": 0.269614168510325,
+      "roll": 0.3018497970395654,
+      "scale": 0.05801308613039242
+     },
+     "calm": {
+      "tx": 0.8998851361201795,
+      "ty": 0.9222756054086116,
+      "roll": 1.017124022558665,
+      "scale": 0.2433773290960963
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 2.2103845221061347,
+      "ty": 0.6446992492891948,
+      "roll": 1.1728938426271276,
+      "scale": 1.62676791046151
+     },
+     "2-8": {
+      "tx": 2.1051344018242144,
+      "ty": 0.6387743184402557,
+      "roll": 1.111513614748273,
+      "scale": 1.6059599117866672
+     },
+     "8-30": {
+      "tx": 0.08193425673687754,
+      "ty": 0.08904107579629862,
+      "roll": 0.08843685093721318,
+      "scale": 0.049079907726432316
+     },
+     "calm": {
+      "tx": 0.282116269658994,
+      "ty": 0.20168767629952478,
+      "roll": 0.24836852377767868,
+      "scale": 0.22221261939194317
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 765,
+     "frame_after": 766,
+     "t_s": 12.7794,
+     "px": 0.868,
+     "vec": [
+      -0.687,
+      0.121,
+      -0.515,
+      0.05
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.376,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.238,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 547,
+     "frame_after": 548,
+     "t_s": 9.1425,
+     "px": 0.562,
+     "vec": [
+      -0.018,
+      0.018,
+      -0.561,
+      -0.006
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.476,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.163,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 359,
+     "frame_after": 360,
+     "t_s": 6.006,
+     "px": 0.545,
+     "vec": [
+      -0.088,
+      -0.131,
+      -0.521,
+      0.018
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": -0.003,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.432,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 735,
+     "frame_after": 736,
+     "t_s": 12.2789,
+     "px": 0.537,
+     "vec": [
+      0.384,
+      0.005,
+      0.356,
+      0.123
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.123,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.071,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 300,
+    "frames": 1501,
+    "seconds": 17.927683115005493,
+    "fps": 83.72526390449534,
+    "codec": "prores",
+    "gb": 5.433195207,
+    "free_gb_after": 69.466988544,
+    "md5": "271ef4a607bf4fd783fa0203ac33f230"
+   },
+   "eval_s": 40.09024500846863,
+   "wall_s": 76.26911902427673,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0027_5-30.json",
+   "lost": [
+    [
+     17.5,
+     0.717,
+     0.636,
+     299.0
+    ],
+    [
+     21.5,
+     0.359,
+     0.305,
+     248.0
+    ],
+    [
+     20.5,
+     0.417,
+     0.375,
+     245.0
+    ],
+    [
+     24.5,
+     0.438,
+     0.407,
+     316.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0027-4c025de1-d69d75104a/plan.spplan",
+   "plan_sha": "a16da5184c9c834e",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0027_5-30_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0027-4c025de1-d69d75104a/plan.spplan",
+    "width": 960,
+    "start_record": 300,
+    "seconds": 6.2,
+    "frames": 720,
+    "fill_frac_mean": 0.0012009682570301786,
+    "fill_frac_p95": 0.00999980709876541,
+    "fill_frac_max": 0.031109182098765432,
+    "frames_with_fill": 0.09305555555555556,
+    "plan_uncovered_mean": 7.70476717105358e-06,
+    "plan_uncovered_p99": 0.0003302303279633595,
+    "plan_uncovered_max": 0.000688716652803123,
+    "seam_ratio_pooled": 1.0321363173977978,
+    "seam_ratio_median": 1.0454841075504966,
+    "seam_ratio_p95": 1.3166689411612247,
+    "seam_frames": 66,
+    "flicker_fill": 12.460408089377664,
+    "flicker_inner": 9.609890872781927,
+    "flicker_ratio_pooled": 1.296623266000788,
+    "flicker_ratio_median": 1.159412269186107,
+    "flicker_ratio_p95": 3.5802201057986855,
+    "flicker_frames": 55,
+    "wall_s": 7.699128866195679
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "d69d75104a"
+   },
+   "base_plan_sha": "a16da5184c9c834e"
+  },
+  "DJI_0027:100-120": {
+   "window": "DJI_0027:100-120",
+   "clip": "DJI_0027",
+   "cam": "o3",
+   "set": "heldout",
+   "start": 100.0,
+   "dur": 20.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.7909284988031227,
+    "calm": 0.12957426629268498,
+    "calm_frac": 0.0913884007029877,
+    "b28": 0.7678276566665297,
+    "b830": 0.25902528745050013,
+    "roll_deg": 0.051655068836105544,
+    "roll830_deg": 0.020784375219752137,
+    "jello": 1.6857137564568414,
+    "row_wobble": 1.6437267040439423,
+    "corner_self": 1.987677663869442,
+    "corner": 0.7596406010961803,
+    "corner_ref": 0.7893599395385166,
+    "jumps1": 0,
+    "jumps05": 4,
+    "jump_max": 0.888,
+    "crop_fit": 0.6030958900642266,
+    "crop_paired": 0.6030957499999999,
+    "crop_ref": 0.6005315,
+    "crop_plan": 0.6031255833295096,
+    "win": 0.6111111111111112,
+    "win_n": 18,
+    "win_p": 0.16735076904296875,
+    "win_orig": 0.9444444444444444,
+    "lag": 0,
+    "med1s": 0.7315825810770562,
+    "noise": 0.13952875970760784,
+    "fails": [
+     "winrate_vs_gyroflow"
+    ],
+    "passed": false,
+    "calm_limit": 0.23896221773693777,
+    "plan_sha": "a16da5184c9c834e",
+    "render_md5": "8487b4705598ae4ab65ba5fcf81c3b2e"
+   },
+   "orig": {
+    "hf": 2.1376352487293486,
+    "calm": 0.9930040515153592,
+    "b28": 2.161501510290691,
+    "b830": 0.3302274394628337,
+    "roll_deg": 0.11717982265430896,
+    "roll830_deg": 0.016681217568476334,
+    "jello": 1.3946323502963527,
+    "row_wobble": 1.3473469665079114,
+    "corner_wobble": 3.3090952853697924,
+    "footprint": NaN,
+    "med1s": 1.2970426389074587,
+    "spikes_gt1": 4
+   },
+   "gf": {
+    "hf": 0.8390054883331726,
+    "calm": 0.47792443547387553,
+    "b28": 0.8049401119824573,
+    "b830": 0.28065165425146543,
+    "roll_deg": 0.05694963026289955,
+    "roll830_deg": 0.022720023046610877,
+    "jello": 1.6243872062159834,
+    "row_wobble": 1.5822911024170214,
+    "corner_wobble": 1.6072401290877298,
+    "footprint": 0.6005319027162994,
+    "med1s": 0.7214422411241465,
+    "spikes_gt1": 5
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.39309018724230893,
+      "ty": 0.22544324906669544,
+      "roll": 0.5733184072513455,
+      "scale": 0.30253816332786826
+     },
+     "2-8": {
+      "tx": 0.40737660971122297,
+      "ty": 0.20548056484211843,
+      "roll": 0.5349988051929817,
+      "scale": 0.30847629425362655
+     },
+     "8-30": {
+      "tx": 0.06230386113151737,
+      "ty": 0.09269849937106357,
+      "roll": 0.2306852970133613,
+      "scale": 0.0374647885771294
+     },
+     "calm": {
+      "tx": 0.05985218621761004,
+      "ty": 0.041911493270468184,
+      "roll": 0.10423770279891911,
+      "scale": 0.024189550167456105
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.9918749189355032,
+      "ty": 1.3538723737833251,
+      "roll": 1.3005761254393207,
+      "scale": 0.2473862147340083
+     },
+     "2-8": {
+      "tx": 0.9869174701764153,
+      "ty": 1.3649025587887031,
+      "roll": 1.3330599008643398,
+      "scale": 0.24098753446833698
+     },
+     "8-30": {
+      "tx": 0.16540264336044158,
+      "ty": 0.21461947083546437,
+      "roll": 0.18514444570224395,
+      "scale": 0.036771514892266724
+     },
+     "calm": {
+      "tx": 0.42984035985249736,
+      "ty": 0.5932665864930319,
+      "roll": 0.669452475167182,
+      "scale": 0.03409475342678463
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.36383755396274425,
+      "ty": 0.31808928603001546,
+      "roll": 0.6320826213488058,
+      "scale": 0.2661638774915364
+     },
+     "2-8": {
+      "tx": 0.37021869174904637,
+      "ty": 0.30429083316269356,
+      "roll": 0.5902427385736438,
+      "scale": 0.2643620671960979
+     },
+     "8-30": {
+      "tx": 0.05744137925936053,
+      "ty": 0.10123999356823137,
+      "roll": 0.2521690072106169,
+      "scale": 0.04033725929686764
+     },
+     "calm": {
+      "tx": 0.10093816213297245,
+      "ty": 0.12231638695773005,
+      "roll": 0.4498822734864502,
+      "scale": 0.029460056559858103
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 1180,
+     "frame_after": 1181,
+     "t_s": 19.703,
+     "px": 2.305,
+     "vec": [
+      0.251,
+      1.736,
+      1.493,
+      0.058
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.219,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.127,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 1186,
+     "frame_after": 1187,
+     "t_s": 19.8031,
+     "px": 1.597,
+     "vec": [
+      -0.312,
+      1.566,
+      -0.018,
+      0.052
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.363,
+       "present": true
+      },
+      "original": {
+       "proj_px": -0.046,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 1125,
+     "frame_after": 1126,
+     "t_s": 18.7854,
+     "px": 1.492,
+     "vec": [
+      0.077,
+      0.021,
+      1.49,
+      0.018
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.467,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.607,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 669,
+     "frame_after": 670,
+     "t_s": 11.1778,
+     "px": 1.449,
+     "vec": [
+      -0.191,
+      0.109,
+      1.432,
+      0.011
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.474,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.228,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 902,
+     "frame_after": 903,
+     "t_s": 15.065,
+     "px": 1.057,
+     "vec": [
+      -0.023,
+      0.184,
+      1.04,
+      0.026
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.154,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.052,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 339,
+     "frame_after": 340,
+     "t_s": 5.6723,
+     "px": 0.888,
+     "vec": [
+      -0.861,
+      -0.095,
+      -0.19,
+      0.043
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.254,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.154,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 171,
+     "frame_after": 172,
+     "t_s": 2.8695,
+     "px": 0.697,
+     "vec": [
+      -0.218,
+      0.027,
+      0.662,
+      -0.012
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.586,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.241,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 86,
+     "frame_after": 87,
+     "t_s": 1.4515,
+     "px": 0.551,
+     "vec": [
+      -0.075,
+      -0.022,
+      0.546,
+      -0.014
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.386,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.21,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 83,
+     "frame_after": 84,
+     "t_s": 1.4014,
+     "px": 0.541,
+     "vec": [
+      -0.11,
+      0.019,
+      0.529,
+      0.01
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.552,
+       "present": false
+      },
+      "original": {
+       "proj_px": -0.03,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 5995,
+    "frames": 1201,
+    "seconds": 14.378767013549805,
+    "fps": 83.52593785463245,
+    "codec": "prores",
+    "gb": 4.358701527,
+    "free_gb_after": 70.544228352,
+    "md5": "8487b4705598ae4ab65ba5fcf81c3b2e"
+   },
+   "eval_s": 34.52080512046814,
+   "wall_s": 64.18433904647827,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0027_100-120.json",
+   "lost": [
+    [
+     104.5,
+     1.65,
+     1.467,
+     286.0
+    ],
+    [
+     105.5,
+     0.851,
+     0.689,
+     221.0
+    ],
+    [
+     112.5,
+     0.938,
+     0.916,
+     299.0
+    ],
+    [
+     113.5,
+     0.568,
+     0.551,
+     461.0
+    ],
+    [
+     116.5,
+     0.529,
+     0.513,
+     358.0
+    ],
+    [
+     117.5,
+     0.413,
+     0.405,
+     334.0
+    ],
+    [
+     114.5,
+     0.797,
+     0.795,
+     379.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0027-4c025de1-d69d75104a/plan.spplan",
+   "plan_sha": "a16da5184c9c834e",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0027_100-120_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0027-4c025de1-d69d75104a/plan.spplan",
+    "width": 960,
+    "start_record": 5995,
+    "seconds": 5.7,
+    "frames": 720,
+    "fill_frac_mean": 4.960776748971194e-05,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.0036496913580246915,
+    "frames_with_fill": 0.027777777777777776,
+    "plan_uncovered_mean": 2.3640610735482948e-08,
+    "plan_uncovered_p99": 0.0,
+    "plan_uncovered_max": 1.6007068552426063e-05,
+    "seam_ratio_pooled": 1.05907002703087,
+    "seam_ratio_median": 1.0461892360440546,
+    "seam_ratio_p95": 1.2674930216334959,
+    "seam_frames": 20,
+    "flicker_fill": 11.167673528194427,
+    "flicker_inner": 14.003367602825165,
+    "flicker_ratio_pooled": 0.7974991334185472,
+    "flicker_ratio_median": 0.7131841704251654,
+    "flicker_ratio_p95": 1.1252151069060499,
+    "flicker_frames": 16,
+    "wall_s": 6.978446960449219
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "d69d75104a"
+   },
+   "base_plan_sha": "a16da5184c9c834e"
+  },
+  "DJI_0032:22-47": {
+   "window": "DJI_0032:22-47",
+   "clip": "DJI_0032",
+   "cam": "o3",
+   "set": "gate",
+   "start": 22.0,
+   "dur": 25.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.5096001427213425,
+    "calm": 0.12218744364088327,
+    "calm_frac": 0.33981931897150797,
+    "b28": 0.5233923409290874,
+    "b830": 0.11577830370519876,
+    "roll_deg": 0.022556421636454643,
+    "roll830_deg": 0.0047745135440445605,
+    "jello": 0.5083139729076334,
+    "row_wobble": 0.42906514458680756,
+    "corner_self": 0.9824051653419082,
+    "corner": 0.5887734717344889,
+    "corner_ref": 0.6068214740776582,
+    "jumps1": 0,
+    "jumps05": 1,
+    "jump_max": 0.558,
+    "crop_fit": 0.5889095839145655,
+    "crop_paired": 0.5889088,
+    "crop_ref": 0.5431728,
+    "crop_plan": 0.5888980335640202,
+    "win": 0.9565217391304348,
+    "win_n": 23,
+    "win_p": 4.76837158203125e-07,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.2396728302771084,
+    "noise": 0.05804665815603658,
+    "fails": [],
+    "passed": true,
+    "calm_limit": 0.1683885065710867,
+    "plan_sha": "d66592364baa3161",
+    "render_md5": "66c2a13cfd3fa4a935aba057d9aa9588"
+   },
+   "orig": {
+    "hf": 4.611674340291135,
+    "calm": 1.3962953933983286,
+    "b28": 4.563828174068697,
+    "b830": 0.6338336621813027,
+    "roll_deg": 0.24296926584072326,
+    "roll830_deg": 0.034129376031206526,
+    "jello": 0.7265444622966881,
+    "row_wobble": 0.622771091017983,
+    "corner_wobble": 1.7416607428674042,
+    "footprint": NaN,
+    "med1s": 3.5339992394652118,
+    "spikes_gt1": 15
+   },
+   "gf": {
+    "hf": 1.2139908027102009,
+    "calm": 0.3367770131421734,
+    "b28": 1.2163870430109824,
+    "b830": 0.17856803280603178,
+    "roll_deg": 0.05361593503496478,
+    "roll830_deg": 0.006941009425290446,
+    "jello": 0.6724655025405658,
+    "row_wobble": 0.6128646130524905,
+    "corner_wobble": 0.7129675292232913,
+    "footprint": 0.5431730968138628,
+    "med1s": 1.0081100939561451,
+    "spikes_gt1": 6
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.22138505284020707,
+      "ty": 0.2028621614474161,
+      "roll": 0.2503531989654968,
+      "scale": 0.32688099219926536
+     },
+     "2-8": {
+      "tx": 0.21520234798606946,
+      "ty": 0.18483268950809326,
+      "roll": 0.25657359984358613,
+      "scale": 0.35725950892456426
+     },
+     "8-30": {
+      "tx": 0.059968239223219665,
+      "ty": 0.07787655446363614,
+      "roll": 0.05299221474579261,
+      "scale": 0.030585835521169804
+     },
+     "calm": {
+      "tx": 0.06886654336983271,
+      "ty": 0.070488869445422,
+      "roll": 0.05874792700111553,
+      "scale": 0.04203773239796396
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 2.692617746759773,
+      "ty": 2.5555181641712474,
+      "roll": 2.6967102288607547,
+      "scale": 0.46306667433813853
+     },
+     "2-8": {
+      "tx": 2.734725155378627,
+      "ty": 2.519585146455902,
+      "roll": 2.6045999291362425,
+      "scale": 0.466428800423853
+     },
+     "8-30": {
+      "tx": 0.26342276079723576,
+      "ty": 0.43239605086135147,
+      "roll": 0.3788011505468512,
+      "scale": 0.04355346085001102
+     },
+     "calm": {
+      "tx": 0.5819781587105066,
+      "ty": 1.0335151410939343,
+      "roll": 0.7263613542579546,
+      "scale": 0.12323913574614781
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.7675652533941568,
+      "ty": 0.618930928190348,
+      "roll": 0.5950820155727266,
+      "scale": 0.38395201746866314
+     },
+     "2-8": {
+      "tx": 0.7613633501544015,
+      "ty": 0.6355366682752852,
+      "roll": 0.5835897407869082,
+      "scale": 0.39425809461885203
+     },
+     "8-30": {
+      "tx": 0.09576603597093386,
+      "ty": 0.12391974235704009,
+      "roll": 0.07703810212798698,
+      "scale": 0.03774171391593802
+     },
+     "calm": {
+      "tx": 0.19404918095515272,
+      "ty": 0.16933692795317798,
+      "roll": 0.20310197102945812,
+      "scale": 0.07640854760383411
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 1214,
+     "frame_after": 1215,
+     "t_s": 20.2703,
+     "px": 1.851,
+     "vec": [
+      1.039,
+      -1.441,
+      0.486,
+      0.184
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.248,
+       "present": true
+      },
+      "original": {
+       "proj_px": 5.483,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 429,
+     "frame_after": 430,
+     "t_s": 7.1738,
+     "px": 1.618,
+     "vec": [
+      -0.019,
+      1.615,
+      -0.09,
+      0.036
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 2.039,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.93,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 465,
+     "frame_after": 466,
+     "t_s": 7.7744,
+     "px": 1.548,
+     "vec": [
+      -0.266,
+      1.492,
+      -0.302,
+      0.094
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 1.512,
+       "present": true
+      },
+      "original": {
+       "proj_px": 0.07,
+       "present": false
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 408,
+     "frame_after": 409,
+     "t_s": 6.8235,
+     "px": 0.558,
+     "vec": [
+      -0.09,
+      0.377,
+      -0.399,
+      0.043
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.335,
+       "present": false
+      },
+      "original": {
+       "proj_px": 1.122,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 1319,
+    "frames": 1501,
+    "seconds": 17.795082092285156,
+    "fps": 84.3491472652852,
+    "codec": "prores",
+    "gb": 5.279751015,
+    "free_gb_after": 69.59386624,
+    "md5": "66c2a13cfd3fa4a935aba057d9aa9588"
+   },
+   "eval_s": 37.83954906463623,
+   "wall_s": 73.76112699508667,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0032_22-47.json",
+   "lost": [
+    [
+     41.5,
+     1.847,
+     1.804,
+     1974.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0032-4c025de1-62b4f246db/plan.spplan",
+   "plan_sha": "d66592364baa3161",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0032_22-47_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0032-4c025de1-62b4f246db/plan.spplan",
+    "width": 960,
+    "start_record": 1319,
+    "seconds": 6.4,
+    "frames": 720,
+    "fill_frac_mean": 0.0015559359996570644,
+    "fill_frac_p95": 0.013068287037037007,
+    "fill_frac_max": 0.034166666666666665,
+    "frames_with_fill": 0.10694444444444444,
+    "plan_uncovered_mean": 2.9894866005106575e-06,
+    "plan_uncovered_p99": 0.00010365712369093637,
+    "plan_uncovered_max": 0.00034483434865251184,
+    "seam_ratio_pooled": 1.0420312270577685,
+    "seam_ratio_median": 1.0164473059909798,
+    "seam_ratio_p95": 1.3547405009435365,
+    "seam_frames": 77,
+    "flicker_fill": 13.10241162776947,
+    "flicker_inner": 9.871906741460164,
+    "flicker_ratio_pooled": 1.3272422411307625,
+    "flicker_ratio_median": 1.0523490320685545,
+    "flicker_ratio_p95": 2.5009544331675286,
+    "flicker_frames": 60,
+    "wall_s": 7.8456220626831055
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "62b4f246db"
+   },
+   "base_plan_sha": "d66592364baa3161"
+  },
+  "DJI_0032:120-140": {
+   "window": "DJI_0032:120-140",
+   "clip": "DJI_0032",
+   "cam": "o3",
+   "set": "heldout",
+   "start": 120.0,
+   "dur": 20.0,
+   "reference": "gyroflow",
+   "sp": {
+    "hf": 0.19410533344194708,
+    "calm": 0.14647989404586997,
+    "calm_frac": 0.7848990342405618,
+    "b28": 0.1656970058602355,
+    "b830": 0.09754871014940864,
+    "roll_deg": 0.007442181728933884,
+    "roll830_deg": 0.0048459874493127246,
+    "jello": 0.24653439730726168,
+    "row_wobble": 0.21673520818033823,
+    "corner_self": 0.5355103619253481,
+    "corner": 0.45079873248136926,
+    "corner_ref": 0.44696703779584845,
+    "jumps1": 0,
+    "jumps05": 1,
+    "jump_max": 0.592,
+    "crop_fit": 0.5874592884873497,
+    "crop_paired": 0.5874595,
+    "crop_ref": 0.611899,
+    "crop_plan": 0.5874714207726596,
+    "win": 1.0,
+    "win_n": 18,
+    "win_p": 7.62939453125e-06,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.14273451932800874,
+    "noise": 0.029453527426805466,
+    "fails": [
+     "crop_footprint"
+    ],
+    "passed": false,
+    "calm_limit": 0.3161156717251148,
+    "plan_sha": "d66592364baa3161",
+    "render_md5": "c9ec74e2734038c1b2abea97eff22ab8"
+   },
+   "orig": {
+    "hf": 3.0932065722463444,
+    "calm": 2.7781681443969255,
+    "b28": 3.073797793599575,
+    "b830": 0.6362437398251892,
+    "roll_deg": 0.17666814186062738,
+    "roll830_deg": 0.03311431361779365,
+    "jello": 0.40069614223687167,
+    "row_wobble": 0.28976980095303506,
+    "corner_wobble": 0.9389176301442561,
+    "footprint": NaN,
+    "med1s": 1.5839645667613604,
+    "spikes_gt1": 19
+   },
+   "gf": {
+    "hf": 0.6436918188474918,
+    "calm": 0.6322313434502296,
+    "b28": 0.560702092219699,
+    "b830": 0.3194575667711277,
+    "roll_deg": 0.04930730400896939,
+    "roll830_deg": 0.026049029330072786,
+    "jello": 0.27792594303381746,
+    "row_wobble": 0.2493062887897481,
+    "corner_wobble": 0.5074570702950891,
+    "footprint": 0.6118991352542805,
+    "med1s": 0.5894868970671374,
+    "spikes_gt1": 6
+   },
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.14172583340823924,
+      "ty": 0.08868070999453145,
+      "roll": 0.08260060186629932,
+      "scale": 0.0538845141162134
+     },
+     "2-8": {
+      "tx": 0.1312075911110549,
+      "ty": 0.06111945244728279,
+      "roll": 0.0631081422440184,
+      "scale": 0.05021793206549052
+     },
+     "8-30": {
+      "tx": 0.04887286397591022,
+      "ty": 0.062005327209259165,
+      "roll": 0.05378550195751607,
+      "scale": 0.019739635139897047
+     },
+     "calm": {
+      "tx": 0.07976586345260571,
+      "ty": 0.09120864789919943,
+      "roll": 0.07382601000975426,
+      "scale": 0.03639325736711514
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.3040001281258584,
+      "ty": 1.9895438556048461,
+      "roll": 1.9608355963082682,
+      "scale": 0.25367218079861353
+     },
+     "2-8": {
+      "tx": 1.3122020739354514,
+      "ty": 1.9490567628028537,
+      "roll": 1.965582705483795,
+      "scale": 0.2530236280914841
+     },
+     "8-30": {
+      "tx": 0.22706841061008132,
+      "ty": 0.46301753645101246,
+      "roll": 0.3675349964359151,
+      "scale": 0.06147211321763658
+     },
+     "calm": {
+      "tx": 0.9723961011183501,
+      "ty": 1.9084740228299741,
+      "roll": 1.7560486601197753,
+      "scale": 0.21606496371786998
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 0.207877490322045,
+      "ty": 0.25047309941922075,
+      "roll": 0.5472606200559562,
+      "scale": 0.09431408628566458
+     },
+     "2-8": {
+      "tx": 0.19620331647721392,
+      "ty": 0.2253289940533647,
+      "roll": 0.465515369248228,
+      "scale": 0.09172448013194025
+     },
+     "8-30": {
+      "tx": 0.07339454846107736,
+      "ty": 0.11080330765410967,
+      "roll": 0.28911757050108056,
+      "scale": 0.028284884019304367
+     },
+     "calm": {
+      "tx": 0.1233992897314982,
+      "ty": 0.23813996962178877,
+      "roll": 0.5689084618667403,
+      "scale": 0.06419971822054295
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 161,
+     "frame_after": 162,
+     "t_s": 2.7027,
+     "px": 0.592,
+     "vec": [
+      0.007,
+      -0.024,
+      -0.592,
+      0.013
+     ],
+     "in": {
+      "gyroflow": {
+       "proj_px": 0.87,
+       "present": false
+      },
+      "original": {
+       "proj_px": 0.345,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 7193,
+    "frames": 1201,
+    "seconds": 14.330161809921265,
+    "fps": 83.80924206790927,
+    "codec": "prores",
+    "gb": 4.256636087,
+    "free_gb_after": 70.632706048,
+    "md5": "c9ec74e2734038c1b2abea97eff22ab8"
+   },
+   "eval_s": 28.50610613822937,
+   "wall_s": 57.77866005897522,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/fill/windows/gate_DJI_0032_120-140.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0032-4c025de1-62b4f246db/plan.spplan",
+   "plan_sha": "d66592364baa3161",
+   "codec": "prores",
+   "fill_artifacts": {
+    "render": "~/Library/Application Support/Stillpoint/scratch/scoreboard/fill/renders/DJI_0032_120-140_fill.mov",
+    "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0032-4c025de1-62b4f246db/plan.spplan",
+    "width": 960,
+    "start_record": 7193,
+    "seconds": 5.5,
+    "frames": 720,
+    "fill_frac_mean": 0.0,
+    "fill_frac_p95": 0.0,
+    "fill_frac_max": 0.0,
+    "frames_with_fill": 0.0,
+    "plan_uncovered_mean": 0.0,
+    "plan_uncovered_p99": 0.0,
+    "plan_uncovered_max": 0.0,
+    "wall_s": 6.826612949371338
+   },
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "62b4f246db"
+   },
+   "base_plan_sha": "d66592364baa3161"
+  },
+  "OA4_0012:146-158": {
+   "window": "OA4_0012:146-158",
+   "clip": "OA4_0012",
+   "cam": "oa4",
+   "set": "oa4",
+   "start": 146.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.18047958517832027,
+    "calm": 0.10407113033136309,
+    "calm_frac": 0.1638846737481032,
+    "b28": 0.1800454371984783,
+    "b830": 0.03943318976189001,
+    "roll_deg": 0.006932605437140793,
+    "roll830_deg": 0.0014369914271557397,
+    "jello": 0.7526419028653218,
+    "row_wobble": 0.7168942553542248,
+    "corner_self": 0.9810391507092477,
+    "corner": 0.477274863832172,
+    "corner_ref": 1.1271701857194196,
+    "jumps1": 0,
+    "jumps05": 0,
+    "jump_max": 0.0,
+    "crop_fit": 0.593687356990896,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.5937216453187034,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.1149370749125313,
+    "noise": 0.052457798362697435,
+    "fails": [],
+    "passed": true,
+    "calm_limit": null,
+    "plan_sha": "87218df7d9d2acab",
+    "render_md5": "483acff67093a70884490ee0f1b46a70"
+   },
+   "orig": {
+    "hf": 1.7688004863135633,
+    "calm": 2.380217522654731,
+    "b28": 1.8044906483613492,
+    "b830": 0.3516778059189648,
+    "roll_deg": 0.061725893501711246,
+    "roll830_deg": 0.022054019823108142,
+    "jello": 0.8559147643045772,
+    "row_wobble": 0.7378596859566057,
+    "corner_wobble": 5.492211378901457,
+    "footprint": NaN,
+    "med1s": 1.42135055753277,
+    "spikes_gt1": 4
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.07399432127414678,
+      "ty": 0.06639262236089755,
+      "roll": 0.08382903556248435,
+      "scale": 0.1251496447379053
+     },
+     "2-8": {
+      "tx": 0.07514329651666507,
+      "ty": 0.06973661884639613,
+      "roll": 0.08485253879880303,
+      "scale": 0.12127116349680928
+     },
+     "8-30": {
+      "tx": 0.016820398863930934,
+      "ty": 0.015453415809655684,
+      "roll": 0.017376094246567345,
+      "scale": 0.027042816521283257
+     },
+     "calm": {
+      "tx": 0.06372345172375242,
+      "ty": 0.05327921289414201,
+      "roll": 0.045887586630006354,
+      "scale": 0.04272910876103677
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.3052440017719458,
+      "ty": 0.9042876299771639,
+      "roll": 0.7463892426012859,
+      "scale": 0.2239648120147824
+     },
+     "2-8": {
+      "tx": 1.381276150919209,
+      "ty": 0.8997757459083708,
+      "roll": 0.6970227830583264,
+      "scale": 0.22983807756339342
+     },
+     "8-30": {
+      "tx": 0.1232294457311602,
+      "ty": 0.18960551073158227,
+      "roll": 0.2666771142264159,
+      "scale": 0.03774718438314443
+     },
+     "calm": {
+      "tx": 1.951790357201496,
+      "ty": 1.0802114771965443,
+      "roll": 0.8218071371582885,
+      "scale": 0.11715822863307664
+     }
+    }
+   },
+   "jump_events": [],
+   "render": {
+    "start_frame": 8752,
+    "frames": 722,
+    "seconds": 10.507559061050415,
+    "fps": 68.71243795110522,
+    "codec": "prores",
+    "gb": 3.413727659,
+    "free_gb_after": 69.99461888,
+    "md5": "483acff67093a70884490ee0f1b46a70"
+   },
+   "eval_s": 23.938621044158936,
+   "wall_s": 40.97229194641113,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_OA4_0012_146-158.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3/plan.spplan",
+   "plan_sha": "87218df7d9d2acab",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "e0adedd9f3"
+   },
+   "base_plan_sha": "87218df7d9d2acab"
+  },
+  "OA4_0012:176-188": {
+   "window": "OA4_0012:176-188",
+   "clip": "OA4_0012",
+   "cam": "oa4",
+   "set": "oa4",
+   "start": 176.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 1.1174337642686756,
+    "calm": NaN,
+    "calm_frac": 0.0,
+    "b28": 1.1511762653868647,
+    "b830": 0.10930155059017249,
+    "roll_deg": 0.027950620843240015,
+    "roll830_deg": 0.0028877122154560625,
+    "jello": 2.2238580867798787,
+    "row_wobble": 1.7482528070528012,
+    "corner_self": 1.0305166033883013,
+    "corner": 0.4886854411591428,
+    "corner_ref": 1.2682696636696111,
+    "jumps1": 2,
+    "jumps05": 3,
+    "jump_max": 1.982,
+    "crop_fit": 0.5945749429924031,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.5945108742625185,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.3838904069836218,
+    "noise": 0.19120058774443457,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": null,
+    "plan_sha": "87218df7d9d2acab",
+    "render_md5": "031e9c55de70ba623fcef9c197e17fd3"
+   },
+   "orig": {
+    "hf": 3.423255739788266,
+    "calm": NaN,
+    "b28": 3.515840751413734,
+    "b830": 0.3181213478845283,
+    "roll_deg": 0.1797688867353244,
+    "roll830_deg": 0.019136969406773372,
+    "jello": 2.4916327243158936,
+    "row_wobble": 1.7511411470839644,
+    "corner_wobble": 2.1942833761621445,
+    "footprint": NaN,
+    "med1s": 2.28723705305902,
+    "spikes_gt1": 4
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.5105153268317311,
+      "ty": 0.42256451813947254,
+      "roll": 0.33797878876946946,
+      "scale": 0.8338116603580397
+     },
+     "2-8": {
+      "tx": 0.5286332553804124,
+      "ty": 0.43400982752331907,
+      "roll": 0.3190108540531136,
+      "scale": 0.8692647582327485
+     },
+     "8-30": {
+      "tx": 0.04182137146920979,
+      "ty": 0.04090583466360406,
+      "roll": 0.034918203869903935,
+      "scale": 0.0854706591692384
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.8618275569725649,
+      "ty": 1.6858688177006473,
+      "roll": 2.173764616464163,
+      "scale": 0.827569773374978
+     },
+     "2-8": {
+      "tx": 1.937905984699581,
+      "ty": 1.7222027075926643,
+      "roll": 2.232844948096025,
+      "scale": 0.8087507993749344
+     },
+     "8-30": {
+      "tx": 0.11510784244161099,
+      "ty": 0.1690876445481768,
+      "roll": 0.23140415295583475,
+      "scale": 0.07624213431068404
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 137,
+     "frame_after": 138,
+     "t_s": 2.3023,
+     "px": 1.982,
+     "vec": [
+      0.526,
+      0.533,
+      0.694,
+      1.699
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.464,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 186,
+     "frame_after": 187,
+     "t_s": 3.1198,
+     "px": 1.069,
+     "vec": [
+      -0.034,
+      -0.027,
+      0.07,
+      -1.066
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.013,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 229,
+     "frame_after": 230,
+     "t_s": 3.8372,
+     "px": 0.615,
+     "vec": [
+      0.099,
+      0.316,
+      0.443,
+      0.269
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.744,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 10550,
+    "frames": 722,
+    "seconds": 9.764440059661865,
+    "fps": 73.94177193863611,
+    "codec": "prores",
+    "gb": 3.47200449,
+    "free_gb_after": 69.966319616,
+    "md5": "031e9c55de70ba623fcef9c197e17fd3"
+   },
+   "eval_s": 23.020725965499878,
+   "wall_s": 39.37494421005249,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_OA4_0012_176-188.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3/plan.spplan",
+   "plan_sha": "87218df7d9d2acab",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "e0adedd9f3"
+   },
+   "base_plan_sha": "87218df7d9d2acab"
+  },
+  "OA4_0012:196-208": {
+   "window": "OA4_0012:196-208",
+   "clip": "OA4_0012",
+   "cam": "oa4",
+   "set": "oa4",
+   "start": 196.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 1.3799981537213086,
+    "calm": NaN,
+    "calm_frac": 0.0,
+    "b28": 1.441371797004181,
+    "b830": 0.058784926309327246,
+    "roll_deg": 0.05515964104080208,
+    "roll830_deg": 0.0021015330911259055,
+    "jello": 1.5544043927282454,
+    "row_wobble": 1.3358568009483796,
+    "corner_self": 4.9895809599730185,
+    "corner": 2.9831682054926905,
+    "corner_ref": 3.77514936718519,
+    "jumps1": 1,
+    "jumps05": 6,
+    "jump_max": 1.1,
+    "crop_fit": 0.5941842157858294,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.5941755029644037,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.8281719733882135,
+    "noise": 0.12324182165434237,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": null,
+    "plan_sha": "87218df7d9d2acab",
+    "render_md5": "9288b100658ce9ddfabb6131d94704c1"
+   },
+   "orig": {
+    "hf": 4.939465594877973,
+    "calm": NaN,
+    "b28": 5.043461075008777,
+    "b830": 0.4555442904702522,
+    "roll_deg": 0.2670275486005509,
+    "roll830_deg": 0.026627274234986023,
+    "jello": 1.7615368847190385,
+    "row_wobble": 1.6096180272103173,
+    "corner_wobble": 3.8003030612034703,
+    "footprint": NaN,
+    "med1s": 2.9290249694993307,
+    "spikes_gt1": 11
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.5471883003237253,
+      "ty": 0.5895676089164987,
+      "roll": 0.6669901456746299,
+      "scale": 0.9013956114561859
+     },
+     "2-8": {
+      "tx": 0.5797665432526417,
+      "ty": 0.607317093126224,
+      "roll": 0.6853523156802978,
+      "scale": 0.9502008021004359
+     },
+     "8-30": {
+      "tx": 0.02221177177371205,
+      "ty": 0.024583132403834765,
+      "roll": 0.025411729230675584,
+      "scale": 0.041378960530539195
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.7683317338575308,
+      "ty": 3.255839856036726,
+      "roll": 3.228895985898006,
+      "scale": 0.4950361462662306
+     },
+     "2-8": {
+      "tx": 1.816096433246245,
+      "ty": 3.3048610889186385,
+      "roll": 3.311366629171073,
+      "scale": 0.5010365160770894
+     },
+     "8-30": {
+      "tx": 0.15887066375232956,
+      "ty": 0.2761387174268058,
+      "roll": 0.3219768871913854,
+      "scale": 0.048569595750472046
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 8,
+     "frame_after": 9,
+     "t_s": 0.1502,
+     "px": 1.1,
+     "vec": [
+      0.135,
+      0.045,
+      -0.062,
+      1.089
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.613,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 78,
+     "frame_after": 79,
+     "t_s": 1.318,
+     "px": 0.564,
+     "vec": [
+      -0.02,
+      -0.236,
+      -0.495,
+      0.131
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.529,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 94,
+     "frame_after": 95,
+     "t_s": 1.5849,
+     "px": 0.548,
+     "vec": [
+      0.088,
+      0.318,
+      0.327,
+      0.291
+     ],
+     "in": {
+      "original": {
+       "proj_px": -0.048,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 16,
+     "frame_after": 17,
+     "t_s": 0.2836,
+     "px": 0.544,
+     "vec": [
+      -0.05,
+      0.124,
+      0.148,
+      0.506
+     ],
+     "in": {
+      "original": {
+       "proj_px": -0.253,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 299,
+     "frame_after": 300,
+     "t_s": 5.005,
+     "px": 0.527,
+     "vec": [
+      0.172,
+      -0.063,
+      0.046,
+      -0.492
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.179,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 11,
+     "frame_after": 12,
+     "t_s": 0.2002,
+     "px": 0.519,
+     "vec": [
+      0.057,
+      0.022,
+      0.369,
+      0.36
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.14,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 11749,
+    "frames": 722,
+    "seconds": 9.788527011871338,
+    "fps": 73.75982097453195,
+    "codec": "prores",
+    "gb": 3.403127004,
+    "free_gb_after": 70.02996736,
+    "md5": "9288b100658ce9ddfabb6131d94704c1"
+   },
+   "eval_s": 23.482025861740112,
+   "wall_s": 39.7947039604187,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_OA4_0012_196-208.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3/plan.spplan",
+   "plan_sha": "87218df7d9d2acab",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "e0adedd9f3"
+   },
+   "base_plan_sha": "87218df7d9d2acab"
+  },
+  "OA4_0012:300-312": {
+   "window": "OA4_0012:300-312",
+   "clip": "OA4_0012",
+   "cam": "oa4",
+   "set": "oa4",
+   "start": 300.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.6149531360109401,
+    "calm": NaN,
+    "calm_frac": 0.0,
+    "b28": 0.6064678845570269,
+    "b830": 0.09337636932321884,
+    "roll_deg": 0.0188484279156684,
+    "roll830_deg": 0.003292806481976155,
+    "jello": 1.3985865515031501,
+    "row_wobble": 1.2520742521187267,
+    "corner_self": 0.44082086930243325,
+    "corner": 0.3515504760556406,
+    "corner_ref": 0.8839586025896791,
+    "jumps1": 0,
+    "jumps05": 3,
+    "jump_max": 0.654,
+    "crop_fit": 0.5939142032535258,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.5938571246519437,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.5799881262679903,
+    "noise": 0.1656257919227146,
+    "fails": [],
+    "passed": true,
+    "calm_limit": null,
+    "plan_sha": "87218df7d9d2acab",
+    "render_md5": "25977698ebe7fa841f7dc2cefb8737bf"
+   },
+   "orig": {
+    "hf": 2.1606367130513786,
+    "calm": NaN,
+    "b28": 2.1818378089528996,
+    "b830": 0.337452914368851,
+    "roll_deg": 0.12533483586391386,
+    "roll830_deg": 0.01878857525790636,
+    "jello": 3.6142728966676057,
+    "row_wobble": 3.247943575010351,
+    "corner_wobble": 9.35143588690028,
+    "footprint": NaN,
+    "med1s": 1.6709983553757857,
+    "spikes_gt1": 12
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.16500873909125952,
+      "ty": 0.1693939973366478,
+      "roll": 0.22791511046835883,
+      "scale": 0.5199036945432395
+     },
+     "2-8": {
+      "tx": 0.1642342409352613,
+      "ty": 0.16241601052950497,
+      "roll": 0.2347801543365993,
+      "scale": 0.509244271206713
+     },
+     "8-30": {
+      "tx": 0.023770513798517526,
+      "ty": 0.03410887194550108,
+      "roll": 0.03981660202369773,
+      "scale": 0.07352096353852097
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.6659957023923293,
+      "ty": 1.3104087245237561,
+      "roll": 1.5155483040424467,
+      "scale": 0.4590675799776109
+     },
+     "2-8": {
+      "tx": 0.6762690696413001,
+      "ty": 1.2666572011854365,
+      "roll": 1.5709276742578822,
+      "scale": 0.4804603489973746
+     },
+     "8-30": {
+      "tx": 0.107082520577115,
+      "ty": 0.22038966093474693,
+      "roll": 0.22719137238438208,
+      "scale": 0.04711985643071435
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 638,
+     "frame_after": 639,
+     "t_s": 10.6607,
+     "px": 0.654,
+     "vec": [
+      0.515,
+      0.09,
+      0.342,
+      0.193
+     ],
+     "in": {
+      "original": {
+       "proj_px": 1.226,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 267,
+     "frame_after": 268,
+     "t_s": 4.4711,
+     "px": 0.536,
+     "vec": [
+      -0.041,
+      0.049,
+      0.033,
+      -0.531
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.138,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 697,
+     "frame_after": 698,
+     "t_s": 11.645,
+     "px": 0.503,
+     "vec": [
+      -0.191,
+      -0.029,
+      0.002,
+      -0.464
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.133,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 17983,
+    "frames": 722,
+    "seconds": 9.770795106887817,
+    "fps": 73.89367928624702,
+    "codec": "prores",
+    "gb": 3.383358652,
+    "free_gb_after": 70.038093824,
+    "md5": "25977698ebe7fa841f7dc2cefb8737bf"
+   },
+   "eval_s": 22.777302026748657,
+   "wall_s": 38.97474384307861,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_OA4_0012_300-312.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3/plan.spplan",
+   "plan_sha": "87218df7d9d2acab",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "e0adedd9f3"
+   },
+   "base_plan_sha": "87218df7d9d2acab"
+  },
+  "OA4_0012:330-342": {
+   "window": "OA4_0012:330-342",
+   "clip": "OA4_0012",
+   "cam": "oa4",
+   "set": "oa4",
+   "start": 330.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.8440984400309751,
+    "calm": 0.09334575173683848,
+    "calm_frac": 0.13505311077389984,
+    "b28": 0.8813359912828563,
+    "b830": 0.09457786721079817,
+    "roll_deg": 0.018521698235127313,
+    "roll830_deg": 0.002786210226005455,
+    "jello": 0.8020469886344959,
+    "row_wobble": 0.5104181191851027,
+    "corner_self": 0.805393535617651,
+    "corner": 0.34432493117101487,
+    "corner_ref": 1.5586352514700912,
+    "jumps1": 0,
+    "jumps05": 3,
+    "jump_max": 0.582,
+    "crop_fit": 0.594122456860012,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.5941180501193875,
+    "win": 0.9,
+    "win_n": 10,
+    "win_p": 0.005859375,
+    "win_orig": 0.9,
+    "lag": 0,
+    "med1s": 0.7313058662897881,
+    "noise": 0.14673072862205908,
+    "fails": [],
+    "passed": true,
+    "calm_limit": null,
+    "plan_sha": "87218df7d9d2acab",
+    "render_md5": "615f478066ad767a3da0408713a2681a"
+   },
+   "orig": {
+    "hf": 3.253077057942745,
+    "calm": 2.0826900247400615,
+    "b28": 3.2152534816638982,
+    "b830": 0.38969094511623853,
+    "roll_deg": 0.16426816671649266,
+    "roll830_deg": 0.02456506578953959,
+    "jello": 1.3694732285796076,
+    "row_wobble": 1.2316869318545305,
+    "corner_wobble": 3.819746346100032,
+    "footprint": NaN,
+    "med1s": 1.3753059171559463,
+    "spikes_gt1": 7
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.46013086205265497,
+      "ty": 0.17078510273175077,
+      "roll": 0.2239642965560797,
+      "scale": 0.6491950468098566
+     },
+     "2-8": {
+      "tx": 0.48600102135759465,
+      "ty": 0.16821826338177057,
+      "roll": 0.23287480725816206,
+      "scale": 0.6767777159298353
+     },
+     "8-30": {
+      "tx": 0.04099499716609999,
+      "ty": 0.028174660957374444,
+      "roll": 0.03369084224367714,
+      "scale": 0.07304449878220456
+     },
+     "calm": {
+      "tx": 0.04988995136562354,
+      "ty": 0.07168103406518986,
+      "roll": 0.02814168694845925,
+      "scale": 0.017155084700788047
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.9953757980163211,
+      "ty": 1.5138303523572556,
+      "roll": 1.9863299756952992,
+      "scale": 0.6031555865117852
+     },
+     "2-8": {
+      "tx": 1.9556656652288307,
+      "ty": 1.5990053775283524,
+      "roll": 1.8984532115477757,
+      "scale": 0.5935351408267586
+     },
+     "8-30": {
+      "tx": 0.12327517976055274,
+      "ty": 0.21343013429873417,
+      "roll": 0.2970406714095909,
+      "scale": 0.05363469084794235
+     },
+     "calm": {
+      "tx": 1.4354471486493476,
+      "ty": 0.35112999485848145,
+      "roll": 1.4660421069737717,
+      "scale": 0.06721227474800953
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 637,
+     "frame_after": 638,
+     "t_s": 10.644,
+     "px": 0.582,
+     "vec": [
+      -0.088,
+      0.019,
+      -0.079,
+      0.569
+     ],
+     "in": {
+      "original": {
+       "proj_px": -0.076,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 171,
+     "frame_after": 172,
+     "t_s": 2.8695,
+     "px": 0.523,
+     "vec": [
+      -0.27,
+      0.08,
+      0.356,
+      0.259
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.299,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 509,
+     "frame_after": 510,
+     "t_s": 8.5085,
+     "px": 0.501,
+     "vec": [
+      0.345,
+      -0.136,
+      -0.144,
+      0.305
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.177,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 19781,
+    "frames": 722,
+    "seconds": 9.827680110931396,
+    "fps": 73.4659646885448,
+    "codec": "prores",
+    "gb": 3.461200219,
+    "free_gb_after": 69.961265152,
+    "md5": "615f478066ad767a3da0408713a2681a"
+   },
+   "eval_s": 22.805977821350098,
+   "wall_s": 39.21375489234924,
+   "vt": [
+    4,
+    4
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_OA4_0012_330-342.json",
+   "lost": [
+    [
+     338.5,
+     0.997,
+     0.903,
+     431.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3/plan.spplan",
+   "plan_sha": "87218df7d9d2acab",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "e0adedd9f3"
+   },
+   "base_plan_sha": "87218df7d9d2acab"
+  },
+  "O4_0004:45-57": {
+   "window": "O4_0004:45-57",
+   "clip": "O4_0004",
+   "cam": "o4",
+   "set": "o4",
+   "start": 45.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.2325057811421414,
+    "calm": NaN,
+    "calm_frac": 0.0,
+    "b28": 0.1988970957900067,
+    "b830": 0.1222862369247842,
+    "roll_deg": 0.008637091329763001,
+    "roll830_deg": 0.0034894500282921658,
+    "jello": 0.4450782580838115,
+    "row_wobble": 0.3799041534180841,
+    "corner_self": 3.0787040555262983,
+    "corner": 2.84824644625324,
+    "corner_ref": 2.342542768265612,
+    "jumps1": 1,
+    "jumps05": 3,
+    "jump_max": 1.122,
+    "crop_fit": 0.614139099867832,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.614144178645247,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.21807759465250548,
+    "noise": 0.07804247754470525,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": null,
+    "plan_sha": "c453c687db859385",
+    "render_md5": "a6adbf7ee306c891bdba66a48fbe600c"
+   },
+   "orig": {
+    "hf": 1.223083723064139,
+    "calm": NaN,
+    "b28": 1.2294270972322272,
+    "b830": 0.25830871936158917,
+    "roll_deg": 0.07129279154622739,
+    "roll830_deg": 0.008687738544700948,
+    "jello": 0.7543833926420012,
+    "row_wobble": 0.6844685279108507,
+    "corner_wobble": 2.4944762284248987,
+    "footprint": NaN,
+    "med1s": 1.2055646829740723,
+    "spikes_gt1": 3
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.12168553693696617,
+      "ty": 0.13486524795299687,
+      "roll": 0.0958628757262046,
+      "scale": 0.10896440848716853
+     },
+     "2-8": {
+      "tx": 0.11384954814524847,
+      "ty": 0.08523226267999162,
+      "roll": 0.0890524900706473,
+      "scale": 0.10678693979831064
+     },
+     "8-30": {
+      "tx": 0.045635049412966054,
+      "ty": 0.10402376245868326,
+      "roll": 0.03872932468159415,
+      "scale": 0.02346193214438454
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.7824328891032682,
+      "ty": 0.48518370489347845,
+      "roll": 0.7912770347373111,
+      "scale": 0.14903017975267274
+     },
+     "2-8": {
+      "tx": 0.8071646820609547,
+      "ty": 0.4485336751607852,
+      "roll": 0.7980707503596473,
+      "scale": 0.14790802246479678
+     },
+     "8-30": {
+      "tx": 0.08735487685372804,
+      "ty": 0.221811025290475,
+      "roll": 0.0964250079864881,
+      "scale": 0.024384562380493698
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 367,
+     "frame_after": 368,
+     "t_s": 6.1395,
+     "px": 1.122,
+     "vec": [
+      0.223,
+      1.096,
+      -0.079,
+      -0.051
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.698,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 470,
+     "frame_after": 471,
+     "t_s": 7.8579,
+     "px": 0.861,
+     "vec": [
+      0.161,
+      -0.826,
+      -0.176,
+      -0.035
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.942,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 575,
+     "frame_after": 576,
+     "t_s": 9.6096,
+     "px": 0.53,
+     "vec": [
+      0.104,
+      0.286,
+      0.287,
+      0.326
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.306,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 2698,
+    "frames": 722,
+    "seconds": 7.468634128570557,
+    "fps": 96.67095583622941,
+    "codec": "prores",
+    "gb": 2.567337339,
+    "free_gb_after": 71.696162816,
+    "md5": "a6adbf7ee306c891bdba66a48fbe600c"
+   },
+   "eval_s": 18.60585594177246,
+   "wall_s": 31.083800792694092,
+   "vt": [
+    4,
+    7
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_O4_0004_45-57.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/O4_0004-4c025de1-359d931535/plan.spplan",
+   "plan_sha": "c453c687db859385",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "359d931535"
+   },
+   "base_plan_sha": "c453c687db859385"
+  },
+  "O4_0004:60-72": {
+   "window": "O4_0004:60-72",
+   "clip": "O4_0004",
+   "cam": "o4",
+   "set": "o4",
+   "start": 60.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 1.2930618960938178,
+    "calm": NaN,
+    "calm_frac": 0.0,
+    "b28": 1.2792983566583467,
+    "b830": 0.15790958317812814,
+    "roll_deg": 0.037365642714109096,
+    "roll830_deg": 0.006679593665158014,
+    "jello": 2.3970185040470384,
+    "row_wobble": 1.767167556109819,
+    "corner_self": 1.7610991448032673,
+    "corner": 1.4629267628205862,
+    "corner_ref": 1.7140269119357097,
+    "jumps1": 2,
+    "jumps05": 4,
+    "jump_max": 2.11,
+    "crop_fit": 0.6138636008891943,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.6138864988500737,
+    "win": 0.6,
+    "win_n": 10,
+    "win_p": 0.16015625,
+    "win_orig": 0.6,
+    "lag": 0,
+    "med1s": 0.7111723075918307,
+    "noise": 0.6801901515191784,
+    "fails": [
+     "winrate_vs_original",
+     "jumps_gt_1px",
+     "jello"
+    ],
+    "passed": false,
+    "calm_limit": null,
+    "plan_sha": "c453c687db859385",
+    "render_md5": "6e0c74c188fdb99761a5b509ea62fc57"
+   },
+   "orig": {
+    "hf": 1.4018033968319898,
+    "calm": NaN,
+    "b28": 1.403059071430638,
+    "b830": 0.1916274728721989,
+    "roll_deg": 0.05719168222447621,
+    "roll830_deg": 0.010758697294095359,
+    "jello": 1.9210783600463741,
+    "row_wobble": 1.473504029118575,
+    "corner_wobble": 2.174659119185076,
+    "footprint": NaN,
+    "med1s": 1.106678007909227,
+    "spikes_gt1": 5
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.45515950959017815,
+      "ty": 0.659915082740647,
+      "roll": 0.4147203991683032,
+      "scale": 0.9259362624092741
+     },
+     "2-8": {
+      "tx": 0.45809413957514933,
+      "ty": 0.6769586463556254,
+      "roll": 0.4186597045109394,
+      "scale": 0.8906206193317231
+     },
+     "8-30": {
+      "tx": 0.08138020229028979,
+      "ty": 0.06521937005953032,
+      "roll": 0.07413665468814216,
+      "scale": 0.09253588134000178
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.5750650320286411,
+      "ty": 0.9099668142067787,
+      "roll": 0.6347691504389809,
+      "scale": 0.6351232124564045
+     },
+     "2-8": {
+      "tx": 0.5792186648611071,
+      "ty": 0.9161825452169398,
+      "roll": 0.6293272166268522,
+      "scale": 0.6305848828292901
+     },
+     "8-30": {
+      "tx": 0.07434597832877653,
+      "ty": 0.11566338634271606,
+      "roll": 0.11941053096494433,
+      "scale": 0.059639500502000224
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 356,
+     "frame_after": 357,
+     "t_s": 5.956,
+     "px": 2.11,
+     "vec": [
+      1.12,
+      0.279,
+      1.562,
+      0.823
+     ],
+     "in": {
+      "original": {
+       "proj_px": 1.163,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 181,
+     "frame_after": 182,
+     "t_s": 3.0364,
+     "px": 1.714,
+     "vec": [
+      1.635,
+      0.047,
+      0.219,
+      -0.464
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.075,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 139,
+     "frame_after": 140,
+     "t_s": 2.3357,
+     "px": 0.843,
+     "vec": [
+      -0.388,
+      0.062,
+      0.077,
+      0.742
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.103,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 175,
+     "frame_after": 176,
+     "t_s": 2.9363,
+     "px": 0.752,
+     "vec": [
+      0.726,
+      0.013,
+      0.141,
+      -0.133
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.119,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 3597,
+    "frames": 722,
+    "seconds": 12.325134038925171,
+    "fps": 58.5794846303321,
+    "codec": "prores",
+    "gb": 2.595488715,
+    "free_gb_after": 71.652163584,
+    "md5": "6e0c74c188fdb99761a5b509ea62fc57"
+   },
+   "eval_s": 21.59016489982605,
+   "wall_s": 38.91063094139099,
+   "vt": [
+    5,
+    7
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_O4_0004_60-72.json",
+   "lost": [
+    [
+     65.5,
+     3.101,
+     2.697,
+     238.0
+    ],
+    [
+     64.5,
+     1.179,
+     1.1,
+     268.0
+    ],
+    [
+     68.5,
+     0.617,
+     0.538,
+     212.0
+    ],
+    [
+     62.5,
+     1.944,
+     1.9,
+     315.0
+    ]
+   ],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/O4_0004-4c025de1-359d931535/plan.spplan",
+   "plan_sha": "c453c687db859385",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "359d931535"
+   },
+   "base_plan_sha": "c453c687db859385"
+  },
+  "O4_0004:177-189": {
+   "window": "O4_0004:177-189",
+   "clip": "O4_0004",
+   "cam": "o4",
+   "set": "o4",
+   "start": 177.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.5284647544647939,
+    "calm": 0.2995353582499553,
+    "calm_frac": 0.3338391502276176,
+    "b28": 0.49561166774570675,
+    "b830": 0.2157680584629891,
+    "roll_deg": 0.01316985731304823,
+    "roll830_deg": 0.006258477995420709,
+    "jello": 0.6763891673275293,
+    "row_wobble": 0.5524962144745628,
+    "corner_self": 18.244873206669315,
+    "corner": 6.901856348923144,
+    "corner_ref": 4.775142279245361,
+    "jumps1": 3,
+    "jumps05": 3,
+    "jump_max": 1.939,
+    "crop_fit": 0.6149557498086823,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.6142451476269425,
+    "win": 1.0,
+    "win_n": 10,
+    "win_p": 0.001953125,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.3948447948031648,
+    "noise": 0.16920916215367124,
+    "fails": [
+     "jumps_gt_1px"
+    ],
+    "passed": false,
+    "calm_limit": null,
+    "plan_sha": "c453c687db859385",
+    "render_md5": "44939bd0ea063b62439c74ea8f4557d7"
+   },
+   "orig": {
+    "hf": 1.4124633815562384,
+    "calm": 0.6160053169727254,
+    "b28": 1.406177333580082,
+    "b830": 0.3115972793345738,
+    "roll_deg": 0.05979724170310479,
+    "roll830_deg": 0.015033413838372851,
+    "jello": 0.9328346831202492,
+    "row_wobble": 0.8430147524977417,
+    "corner_wobble": 10.746416167809512,
+    "footprint": NaN,
+    "med1s": 1.1537255241635922,
+    "spikes_gt1": 4
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.36989823311936143,
+      "ty": 0.29469022916357984,
+      "roll": 0.14617193991941171,
+      "scale": 0.18504520167359692
+     },
+     "2-8": {
+      "tx": 0.34971220320335183,
+      "ty": 0.27169893888925156,
+      "roll": 0.12794276187561432,
+      "scale": 0.18205119177427254
+     },
+     "8-30": {
+      "tx": 0.14115562602102424,
+      "ty": 0.13588593089950063,
+      "roll": 0.069462701667028,
+      "scale": 0.05780044252593782
+     },
+     "calm": {
+      "tx": 0.19787811665465102,
+      "ty": 0.1888636207787215,
+      "roll": 0.09057336005198319,
+      "scale": 0.08180880751106495
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.7157382019112066,
+      "ty": 0.983327543450711,
+      "roll": 0.6636881944736652,
+      "scale": 0.27451148130756486
+     },
+     "2-8": {
+      "tx": 0.7110659226708081,
+      "ty": 0.9823284583465007,
+      "roll": 0.6588506435368232,
+      "scale": 0.2695673877241142
+     },
+     "8-30": {
+      "tx": 0.11364665976965442,
+      "ty": 0.22970247326520762,
+      "roll": 0.16685551043815183,
+      "scale": 0.059777199869007154
+     },
+     "calm": {
+      "tx": 0.30266056093341714,
+      "ty": 0.38606043306748117,
+      "roll": 0.34807113187808064,
+      "scale": 0.13290208639068757
+     }
+    }
+   },
+   "jump_events": [
+    {
+     "pair": 306,
+     "frame_after": 307,
+     "t_s": 5.1218,
+     "px": 1.939,
+     "vec": [
+      1.858,
+      0.072,
+      0.042,
+      0.55
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.778,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 183,
+     "frame_after": 184,
+     "t_s": 3.0697,
+     "px": 1.526,
+     "vec": [
+      0.426,
+      1.448,
+      0.175,
+      0.142
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.668,
+       "present": false
+      }
+     },
+     "only": true
+    },
+    {
+     "pair": 133,
+     "frame_after": 134,
+     "t_s": 2.2356,
+     "px": 1.302,
+     "vec": [
+      0.12,
+      -1.267,
+      0.258,
+      -0.09
+     ],
+     "in": {
+      "original": {
+       "proj_px": 1.891,
+       "present": true
+      }
+     },
+     "only": false
+    },
+    {
+     "pair": 136,
+     "frame_after": 137,
+     "t_s": 2.2856,
+     "px": 1.182,
+     "vec": [
+      -0.135,
+      1.173,
+      0.036,
+      0.049
+     ],
+     "in": {
+      "original": {
+       "proj_px": 0.172,
+       "present": false
+      }
+     },
+     "only": true
+    }
+   ],
+   "render": {
+    "start_frame": 10610,
+    "frames": 722,
+    "seconds": 8.472928047180176,
+    "fps": 85.21257303020347,
+    "codec": "prores",
+    "gb": 2.559918379,
+    "free_gb_after": 71.696367616,
+    "md5": "44939bd0ea063b62439c74ea8f4557d7"
+   },
+   "eval_s": 15.48356819152832,
+   "wall_s": 28.854809999465942,
+   "vt": [
+    5,
+    6
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_O4_0004_177-189.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/O4_0004-4c025de1-359d931535/plan.spplan",
+   "plan_sha": "c453c687db859385",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "359d931535"
+   },
+   "base_plan_sha": "c453c687db859385"
+  },
+  "O4_0004:134-146": {
+   "window": "O4_0004:134-146",
+   "clip": "O4_0004",
+   "cam": "o4",
+   "set": "o4 calm",
+   "start": 134.0,
+   "dur": 12.0,
+   "reference": "original",
+   "sp": {
+    "hf": 0.12513240469902137,
+    "calm": 0.11515917426699455,
+    "calm_frac": 0.7984848484848485,
+    "b28": 0.10989514372775143,
+    "b830": 0.06072278442062445,
+    "roll_deg": 0.005733588768253452,
+    "roll830_deg": 0.002641761530008817,
+    "jello": 0.2745179561953921,
+    "row_wobble": 0.2646586788203737,
+    "corner_self": 1.0547102125091898,
+    "corner": 0.694232783833198,
+    "corner_ref": 1.01833461398949,
+    "jumps1": 0,
+    "jumps05": 0,
+    "jump_max": 0.0,
+    "crop_fit": 0.613319495812627,
+    "crop_paired": null,
+    "crop_ref": null,
+    "crop_plan": 0.6131950896703398,
+    "win": 1.0,
+    "win_n": 11,
+    "win_p": 0.0009765625,
+    "win_orig": 1.0,
+    "lag": 0,
+    "med1s": 0.10325799087261725,
+    "noise": 0.029868451846201564,
+    "fails": [],
+    "passed": true,
+    "calm_limit": null,
+    "plan_sha": "c453c687db859385",
+    "render_md5": "2e135cdc9d33b68af42eb79bc983add0"
+   },
+   "orig": {
+    "hf": 0.5184139428203873,
+    "calm": 0.4074362073072771,
+    "b28": 0.5283108644362543,
+    "b830": 0.10805642256428388,
+    "roll_deg": 0.01567301097398071,
+    "roll830_deg": 0.005019915726893499,
+    "jello": 0.29532287632747467,
+    "row_wobble": 0.2769175523625357,
+    "corner_wobble": 1.0608341506258536,
+    "footprint": NaN,
+    "med1s": 0.3647186270101602,
+    "spikes_gt1": 0
+   },
+   "gf": null,
+   "axes": {
+    "sp": {
+     "hf": {
+      "tx": 0.06724835560051763,
+      "ty": 0.07589477848655284,
+      "roll": 0.0636369683463015,
+      "scale": 0.036415604250855035
+     },
+     "2-8": {
+      "tx": 0.05939090202653649,
+      "ty": 0.06641254271188404,
+      "roll": 0.05690110305997718,
+      "scale": 0.030021692365979683
+     },
+     "8-30": {
+      "tx": 0.03270191687930689,
+      "ty": 0.036793396499341366,
+      "roll": 0.029320849760709013,
+      "scale": 0.020109075651673282
+     },
+     "calm": {
+      "tx": 0.06616631112223847,
+      "ty": 0.06188840371987409,
+      "roll": 0.060426120231952915,
+      "scale": 0.03744548262541971
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.33437018953858094,
+      "ty": 0.35114919405214595,
+      "roll": 0.17395438416596906,
+      "scale": 0.058169650200770674
+     },
+     "2-8": {
+      "tx": 0.34070807899291455,
+      "ty": 0.36330276568548603,
+      "roll": 0.16685069099722977,
+      "scale": 0.05658906033292933
+     },
+     "8-30": {
+      "tx": 0.05527770145864893,
+      "ty": 0.07220637618097633,
+      "roll": 0.05571592786392548,
+      "scale": 0.017393700006403154
+     },
+     "calm": {
+      "tx": 0.26654049865400153,
+      "ty": 0.25412076482231716,
+      "roll": 0.16675907417367922,
+      "scale": 0.050739271467696405
+     }
+    }
+   },
+   "jump_events": [],
+   "render": {
+    "start_frame": 8032,
+    "frames": 722,
+    "seconds": 10.855360984802246,
+    "fps": 66.51091575957875,
+    "codec": "prores",
+    "gb": 2.577647239,
+    "free_gb_after": 71.494258688,
+    "md5": "2e135cdc9d33b68af42eb79bc983add0"
+   },
+   "eval_s": 21.03327178955078,
+   "wall_s": 36.8596670627594,
+   "vt": [
+    6,
+    6
+   ],
+   "gate_json": "~/Desktop/Claude Assistant/stillpoint/work/gate/v6/default/windows/gate_O4_0004_134-146.json",
+   "lost": [],
+   "plan": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/O4_0004-4c025de1-359d931535/plan.spplan",
+   "plan_sha": "c453c687db859385",
+   "codec": "prores",
+   "rkey": {
+    "sprender": "0bd468b395f6",
+    "shader": "398650cff9bc",
+    "eval": "edeb667e8e42d39d",
+    "codec": "prores",
+    "analysis": "359d931535"
+   },
+   "base_plan_sha": "c453c687db859385"
+  }
+ },
+ "analyses": {
+  "DJI_0034": {
+   "ok": true,
+   "clip": "DJI_0034",
+   "key": "93beefde41",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "fov_match": "~/Desktop/untitled folder 5/DJI_0034_stabilized.mp4",
+    "fill": true,
+    "fill_overscan": 0.06
+   },
+   "wall_s": 270.4480881690979,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "e54424cbabe25e92",
+   "finished": "2026-09-30T04:49:31",
+   "report": {
+    "camera": "DJI O3 (FC8383)",
+    "n_frames": 3029,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1549.3382822718465,
+     "hfov_deg": 102.1966171711196
+    },
+    "zoom": {
+     "max": 1.0000000000001268,
+     "mean": 1.0000000000000027,
+     "frac_zoomed": 0.0
+    },
+    "total_s": 268.083792874997,
+    "x_realtime": 5.305037508711104,
+    "stage_s": {
+     "calib_s": 4.0188992920011515,
+     "crop_s": 6.947215916996356,
+     "closed_loop_s": 228.0948788750029,
+     "final_replan_s": 3.6119296249962645,
+     "fill_s": 3.4821585419995245,
+     "quality_s": 21.511376208
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 2.289,
+    "peak_main_gb": 1.095,
+    "peak_stage": "quality",
+    "crop": {
+     "mode": "footprint",
+     "gyroflow_render": "~/Desktop/untitled folder 5/DJI_0034_stabilized.mp4",
+     "gyroflow_footprint_source": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/work/baseline/DJI_0034_wholeclip_gf_footprint.json",
+     "target_footprint": 0.6215136142277139,
+     "target_source": "gyroflow_cached",
+     "gyroflow_footprint": 0.6215136142277139,
+     "footprint_mean": 0.6243710355034917,
+     "footprint_goal": 0.6245136142277139,
+     "footprint_method": "fill.output_footprint (unclipped = displayed field of view) (every 7 frames)",
+     "min_out_fx": 1549.3382822718465
+    },
+    "closed_loop": {
+     "stop": "converged (composite gain < min_improve)",
+     "n_increments": 2,
+     "open_hf": 0.5817410333997123,
+     "final_hf": 0.06727300445530002
+    },
+    "quality": {
+     "original_hf_px": 5.828958615636651,
+     "stabilized_hf_px": 0.2340922873797323,
+     "original_calm_hf_px": 1.172362384228321,
+     "stabilized_calm_hf_px": 0.14761832834317076,
+     "original_b8_30_px": 0.3981196750016745,
+     "stabilized_b8_30_px": 0.07903373936878091,
+     "original_jello_px": 1.0621747236356613,
+     "stabilized_jello_px": 0.3642264833289731,
+     "new_jumps_gt_0_5px": 0,
+     "new_jumps_gt_1px": 0,
+     "new_jumps_max_px": 0.0,
+     "crop_footprint_mean": 0.624197411094858,
+     "crop_footprint_min": 0.6121907204864575,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 10
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0034-4c025de1-93beefde41"
+  },
+  "DJI_0025": {
+   "ok": true,
+   "clip": "DJI_0025",
+   "key": "d48f945dcd",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "fov_match": "~/Desktop/untitled folder 5/DJI_0025_stabilized.mp4",
+    "fill": true,
+    "fill_overscan": 0.06
+   },
+   "wall_s": 285.487832069397,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "4fb52905ca463a1f",
+   "finished": "2026-09-30T04:57:29",
+   "report": {
+    "camera": "DJI O3 (FC8383)",
+    "n_frames": 2965,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1539.635668628036,
+     "hfov_deg": 102.54819590315805
+    },
+    "zoom": {
+     "max": 1.000000000000011,
+     "mean": 1.0000000000000016,
+     "frac_zoomed": 0.0
+    },
+    "total_s": 279.50719345799735,
+    "x_realtime": 5.650481595126573,
+    "stage_s": {
+     "calib_s": 3.8532945419938187,
+     "crop_s": 7.454402374998608,
+     "closed_loop_s": 242.96464895900135,
+     "final_replan_s": 3.9721240830040188,
+     "fill_s": 1.9302065829979256,
+     "quality_s": 19.25276195799961
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 2.374,
+    "peak_main_gb": 1.153,
+    "peak_stage": "quality",
+    "crop": {
+     "mode": "footprint",
+     "gyroflow_render": "~/Desktop/untitled folder 5/DJI_0025_stabilized.mp4",
+     "gyroflow_footprint_source": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/work/baseline/DJI_0025_wholeclip_gf_footprint.json",
+     "target_footprint": 0.6263427797999496,
+     "target_source": "gyroflow_cached",
+     "gyroflow_footprint": 0.6263427797999496,
+     "footprint_mean": 0.629202782262765,
+     "footprint_goal": 0.6293427797999496,
+     "footprint_method": "fill.output_footprint (unclipped = displayed field of view) (every 7 frames)",
+     "min_out_fx": 1539.635668628036
+    },
+    "closed_loop": {
+     "stop": "converged (composite gain < min_improve)",
+     "n_increments": 2,
+     "open_hf": 0.40725909928579274,
+     "final_hf": 0.09987900679194911
+    },
+    "quality": {
+     "original_hf_px": 0.8524442281785497,
+     "stabilized_hf_px": 0.14367195700894392,
+     "original_calm_hf_px": 0.6519877887428633,
+     "stabilized_calm_hf_px": 0.1375106449129447,
+     "original_b8_30_px": 0.2194119004968588,
+     "stabilized_b8_30_px": 0.0903349938565398,
+     "original_jello_px": 0.29775242882945996,
+     "stabilized_jello_px": 0.23991189071787503,
+     "new_jumps_gt_0_5px": 0,
+     "new_jumps_gt_1px": 0,
+     "new_jumps_max_px": 0.0,
+     "crop_footprint_mean": 0.6291363535748192,
+     "crop_footprint_min": 0.615619706764629,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 10
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0025-4c025de1-d48f945dcd"
+  },
+  "DJI_0028": {
+   "ok": true,
+   "clip": "DJI_0028",
+   "key": "0b7893635e",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "fov_match": "~/Desktop/untitled folder 5/DJI_0028_stabilized.mp4",
+    "fill": true,
+    "fill_overscan": 0.06
+   },
+   "wall_s": 330.62653279304504,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "2e3aaddac25b8dd0",
+   "finished": "2026-09-30T05:06:14",
+   "report": {
+    "camera": "DJI O3 (FC8383)",
+    "n_frames": 3833,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1535.8150700172048,
+     "hfov_deg": 102.68711380518498
+    },
+    "zoom": {
+     "max": 1.124227418548629,
+     "mean": 1.0030112428780975,
+     "frac_zoomed": 0.04722149752152361
+    },
+    "total_s": 328.09568687499996,
+    "x_realtime": 5.130726620757275,
+    "stage_s": {
+     "calib_s": 4.22411229100544,
+     "crop_s": 15.883861583999533,
+     "closed_loop_s": 269.8381375409954,
+     "final_replan_s": 5.630845792002219,
+     "fill_s": 4.242820249994111,
+     "quality_s": 29.86386858300102
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 2.348,
+    "peak_main_gb": 1.198,
+    "peak_stage": "fill",
+    "crop": {
+     "mode": "footprint",
+     "gyroflow_render": "~/Desktop/untitled folder 5/DJI_0028_stabilized.mp4",
+     "gyroflow_footprint_source": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/work/baseline/DJI_0028_wholeclip_gf_footprint.json",
+     "target_footprint": 0.6279189083504919,
+     "target_source": "gyroflow_cached",
+     "gyroflow_footprint": 0.6279189083504919,
+     "footprint_mean": 0.63064237872105,
+     "footprint_goal": 0.6309189083504919,
+     "footprint_method": "fill.output_footprint (unclipped = displayed field of view) (every 9 frames)",
+     "min_out_fx": 1535.8150700172048
+    },
+    "closed_loop": {
+     "stop": "converged (composite gain < min_improve)",
+     "n_increments": 2,
+     "open_hf": 0.6629331901154352,
+     "final_hf": 0.34550734269581745
+    },
+    "quality": {
+     "original_hf_px": 4.260981437880277,
+     "stabilized_hf_px": 1.0483326701418936,
+     "original_calm_hf_px": 1.9700049444380632,
+     "stabilized_calm_hf_px": 0.22892580547379804,
+     "original_b8_30_px": 0.5277256408906088,
+     "stabilized_b8_30_px": 0.2713843274021295,
+     "original_jello_px": 1.5684891628192388,
+     "stabilized_jello_px": 0.9463428145477053,
+     "new_jumps_gt_0_5px": 10,
+     "new_jumps_gt_1px": 5,
+     "new_jumps_max_px": 3.021,
+     "crop_footprint_mean": 0.6302554601337191,
+     "crop_footprint_min": 0.4984325017077478,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 12
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0028-4c025de1-0b7893635e"
+  },
+  "DJI_0027": {
+   "ok": true,
+   "clip": "DJI_0027",
+   "key": "d69d75104a",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "fov_match": "~/Desktop/untitled folder 5/DJI_0027_stabilized.mp4",
+    "fill": true,
+    "fill_overscan": 0.06
+   },
+   "wall_s": 957.0939440727234,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "a16da5184c9c834e",
+   "finished": "2026-09-30T05:32:07",
+   "report": {
+    "camera": "DJI O3 (FC8383)",
+    "n_frames": 11609,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1586.468566809557,
+     "hfov_deg": 100.86712792455569
+    },
+    "zoom": {
+     "max": 1.048130651200152,
+     "mean": 1.0003936700667353,
+     "frac_zoomed": 0.018692393832371437
+    },
+    "total_s": 952.5761166669981,
+    "x_realtime": 4.918379664957309,
+    "stage_s": {
+     "calib_s": 4.161250084005587,
+     "crop_s": 19.894236416999775,
+     "closed_loop_s": 817.1901728749945,
+     "final_replan_s": 11.433884624995699,
+     "fill_s": 16.690710166003555,
+     "quality_s": 87.32694745800109
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 3.185,
+    "peak_main_gb": 1.007,
+    "peak_stage": "final",
+    "crop": {
+     "mode": "footprint",
+     "gyroflow_render": "~/Desktop/untitled folder 5/DJI_0027_stabilized.mp4",
+     "gyroflow_footprint_source": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/work/baseline/DJI_0027_wholeclip_gf_footprint.json",
+     "target_footprint": 0.6008978367785492,
+     "target_source": "gyroflow_cached",
+     "gyroflow_footprint": 0.6008978367785492,
+     "footprint_mean": 0.6034005708933545,
+     "footprint_goal": 0.6038978367785492,
+     "footprint_method": "fill.output_footprint (unclipped = displayed field of view) (every 15 frames)",
+     "min_out_fx": 1586.468566809557
+    },
+    "closed_loop": {
+     "stop": "converged (composite gain < min_improve)",
+     "n_increments": 2,
+     "open_hf": 0.714560718929023,
+     "final_hf": 0.5762909790373884
+    },
+    "quality": {
+     "original_hf_px": 5.590513607869352,
+     "stabilized_hf_px": 1.8744826491410902,
+     "original_calm_hf_px": 1.4177781993046805,
+     "stabilized_calm_hf_px": 0.2395690465643112,
+     "original_b8_30_px": 0.6103566654735149,
+     "stabilized_b8_30_px": 0.28791121472377834,
+     "original_jello_px": 2.039903012692835,
+     "stabilized_jello_px": 1.473548597229579,
+     "new_jumps_gt_0_5px": 26,
+     "new_jumps_gt_1px": 17,
+     "new_jumps_max_px": 9.238,
+     "crop_footprint_mean": 0.6030302010189106,
+     "crop_footprint_min": 0.5653857001578572,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 32
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0027-4c025de1-d69d75104a"
+  },
+  "DJI_0032": {
+   "ok": true,
+   "clip": "DJI_0032",
+   "key": "62b4f246db",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "fov_match": "~/Desktop/untitled folder 5/DJI_0032_stabilized.mp4",
+    "fill": true,
+    "fill_overscan": 0.06
+   },
+   "wall_s": 997.2777581214905,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "d66592364baa3161",
+   "finished": "2026-09-30T05:52:20",
+   "report": {
+    "camera": "DJI O3 (FC8383)",
+    "n_frames": 11802,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1614.7635311500903,
+     "hfov_deg": 99.87080730931307
+    },
+    "zoom": {
+     "max": 1.0000000000013038,
+     "mean": 1.0000000000000162,
+     "frac_zoomed": 0.0
+    },
+    "total_s": 992.9799049170033,
+    "x_realtime": 5.043151586171851,
+    "stage_s": {
+     "calib_s": 4.146908916998655,
+     "crop_s": 19.36943637499644,
+     "closed_loop_s": 878.5881689590024,
+     "final_replan_s": 11.096516500001599,
+     "fill_s": 13.212167582998518,
+     "quality_s": 70.13134400000126
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 3.136,
+    "peak_main_gb": 1.04,
+    "peak_stage": "fold2",
+    "crop": {
+     "mode": "footprint",
+     "gyroflow_render": "~/Desktop/untitled folder 5/DJI_0032_stabilized.mp4",
+     "gyroflow_footprint_source": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/work/baseline/DJI_0032_wholeclip_gf_footprint.json",
+     "target_footprint": 0.5853226118135101,
+     "target_source": "gyroflow_cached",
+     "gyroflow_footprint": 0.5853226118135101,
+     "footprint_mean": 0.5880992517491266,
+     "footprint_goal": 0.5883226118135101,
+     "footprint_method": "fill.output_footprint (unclipped = displayed field of view) (every 15 frames)",
+     "min_out_fx": 1614.7635311500903
+    },
+    "closed_loop": {
+     "stop": "converged (composite gain < min_improve)",
+     "n_increments": 2,
+     "open_hf": 0.5964864849366752,
+     "final_hf": 0.24158393195112499
+    },
+    "quality": {
+     "original_hf_px": 3.724538963685494,
+     "stabilized_hf_px": 0.22320502348154533,
+     "original_calm_hf_px": 1.8245018184425517,
+     "stabilized_calm_hf_px": 0.15307576500594425,
+     "original_b8_30_px": 0.4771634723008841,
+     "stabilized_b8_30_px": 0.09976431070758394,
+     "original_jello_px": 0.6382687929652588,
+     "stabilized_jello_px": 0.26492522501346755,
+     "new_jumps_gt_0_5px": 3,
+     "new_jumps_gt_1px": 1,
+     "new_jumps_max_px": 1.634,
+     "crop_footprint_mean": 0.5878721049628927,
+     "crop_footprint_min": 0.5772413937166732,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 34
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/DJI_0032-4c025de1-62b4f246db"
+  },
+  "OA4_0012": {
+   "ok": true,
+   "clip": "OA4_0012",
+   "key": "e0adedd9f3",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "smoothness": 1.5,
+    "out_fx": 1596.847144089084
+   },
+   "wall_s": 145.29195499420166,
+   "vt": [
+    4,
+    4
+   ],
+   "plan_sha": "87218df7d9d2acab",
+   "finished": "2026-09-30T02:56:57",
+   "report": {
+    "camera": "DJI Osmo Action 4",
+    "n_frames": 23950,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2880,
+     "min_out_fx": 1596.847144089084,
+     "hfov_deg": 100.5
+    },
+    "zoom": {
+     "max": 1.0833737341091385,
+     "mean": 1.0004549850572673,
+     "frac_zoomed": 0.007933194154488519
+    },
+    "total_s": 142.39260916700005,
+    "x_realtime": 0.3563683310434869,
+    "stage_s": {
+     "calib_s": 6.861593082998297,
+     "crop_s": 17.920407834000798,
+     "closed_loop_s": 0.00015070799781824462,
+     "final_replan_s": 2.5419976736884564e-06,
+     "quality_s": 113.45732549999957
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 3.18,
+    "peak_main_gb": 0.555,
+    "peak_stage": "crop",
+    "crop": {
+     "mode": "explicit",
+     "min_out_fx": 1596.847144089084
+    },
+    "closed_loop": {
+     "stop": "iterations",
+     "n_increments": 0,
+     "open_hf": null,
+     "final_hf": null
+    },
+    "quality": {
+     "original_hf_px": 2.4878945383780753,
+     "stabilized_hf_px": 0.6636788118359962,
+     "original_calm_hf_px": 1.9554692849115514,
+     "stabilized_calm_hf_px": 0.785318893664162,
+     "original_b8_30_px": 0.3518490104315043,
+     "stabilized_b8_30_px": 0.06478298551393236,
+     "original_jello_px": 1.6460205554600962,
+     "stabilized_jello_px": 1.2613670862633506,
+     "new_jumps_gt_0_5px": 12,
+     "new_jumps_gt_1px": 1,
+     "new_jumps_max_px": 1.026,
+     "crop_footprint_mean": 0.5924454998058081,
+     "crop_footprint_min": 0.533403966474585,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 0,
+    "mean": 0.0,
+    "samples": 5
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/OA4_0012-4c025de1-e0adedd9f3"
+  },
+  "O4_0004": {
+   "ok": true,
+   "clip": "O4_0004",
+   "key": "359d931535",
+   "engine": {
+    "root": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2",
+    "head": "03300f2a1e9668172b7a333d1d3259ec57a1778c",
+    "head_short": "03300f2",
+    "branch": "HEAD",
+    "dirty": false,
+    "dirty_files": [],
+    "content": "4c025de1e723",
+    "shader": "~/Library/Application Support/Stillpoint/scratch/gate6/engine_03300f2/shaders/warp.metal",
+    "shader_sha": "398650cff9bc"
+   },
+   "params": {
+    "processes": 3,
+    "save_iter_plans": false,
+    "verbose": true,
+    "smoothness": 1.5,
+    "out_fx": 1611.0712918603779
+   },
+   "wall_s": 95.22197389602661,
+   "vt": [
+    5,
+    4
+   ],
+   "plan_sha": "c453c687db859385",
+   "finished": "2026-09-30T03:28:29",
+   "report": {
+    "camera": "DJI O4 Pro",
+    "n_frames": 11482,
+    "fps": 59.94005994005994,
+    "out": {
+     "w": 3840,
+     "h": 2160,
+     "min_out_fx": 1611.0712918603779,
+     "hfov_deg": 99.99999999999999
+    },
+    "zoom": {
+     "max": 1.0000000000000149,
+     "mean": 1.0000000000000004,
+     "frac_zoomed": 0.0
+    },
+    "total_s": 90.5051517920001,
+    "x_realtime": 0.4724685789319552,
+    "stage_s": {
+     "calib_s": 4.107524833001662,
+     "crop_s": 11.980711166004767,
+     "closed_loop_s": 0.0001673340011620894,
+     "final_replan_s": 5.541995051316917e-06,
+     "quality_s": 71.8614875839994
+    },
+    "pool_workers": 3,
+    "peak_rss_gb": 2.028,
+    "peak_main_gb": 0.302,
+    "peak_stage": "crop",
+    "crop": {
+     "mode": "explicit",
+     "min_out_fx": 1611.0712918603779
+    },
+    "closed_loop": {
+     "stop": "iterations",
+     "n_increments": 0,
+     "open_hf": null,
+     "final_hf": null
+    },
+    "quality": {
+     "original_hf_px": 2.374539828496442,
+     "stabilized_hf_px": 0.5844330496475589,
+     "original_calm_hf_px": 0.5729537577773949,
+     "stabilized_calm_hf_px": 0.2486495020394398,
+     "original_b8_30_px": 0.2968518378330659,
+     "stabilized_b8_30_px": 0.10899171395182564,
+     "original_jello_px": 1.6270094761031708,
+     "stabilized_jello_px": 1.370360983514186,
+     "new_jumps_gt_0_5px": 3,
+     "new_jumps_gt_1px": 1,
+     "new_jumps_max_px": 1.076,
+     "crop_footprint_mean": 0.6144180327024227,
+     "crop_footprint_min": 0.6057658726616006,
+     "error": null
+    }
+   },
+   "other_slots_busy": {
+    "max": 1,
+    "mean": 0.75,
+    "samples": 4
+   },
+   "dir": "~/Library/Application Support/Stillpoint/scratch/scoreboard/analyses/O4_0004-4c025de1-359d931535"
+  }
+ },
+ "summary": {
+  "o3": {
+   "n": 10,
+   "passed": 1,
+   "mean_hf": 0.6051784742755799,
+   "mean_calm": 0.18515264046559265,
+   "mean_b28": 0.5902723674127108,
+   "mean_b830": 0.14866499372755473,
+   "mean_roll_deg": 0.023381950305979154,
+   "mean_roll830_deg": 0.009773961114395898,
+   "mean_jello": 0.778720224021731,
+   "mean_row_wobble": 0.732781648480332,
+   "mean_corner": 0.7104205623813474,
+   "mean_crop_plan": 0.6156803548813885,
+   "mean_crop_fit": 0.6156236449571668,
+   "jumps1": 8,
+   "jumps05": 39,
+   "check_fails": {
+    "jumps_gt_1px": 3,
+    "crop_footprint": 2,
+    "calm_cruise": 2,
+    "jello": 2,
+    "winrate_vs_gyroflow": 2,
+    "corner_wobble": 1
+   },
+   "ci": {
+    "hf": {
+     "mean": 0.6051784742755799,
+     "lo": 0.3541334495141671,
+     "hi": 0.9378666989697362,
+     "n": 10
+    },
+    "calm": {
+     "mean": 0.18515264046559265,
+     "lo": 0.1374573053926906,
+     "hi": 0.24644150085038807,
+     "n": 10
+    },
+    "b28": {
+     "mean": 0.5902723674127108,
+     "lo": 0.33763397150220725,
+     "hi": 0.9226109866519163,
+     "n": 10
+    },
+    "b830": {
+     "mean": 0.14866499372755473,
+     "lo": 0.10721465514293847,
+     "hi": 0.19668462919251864,
+     "n": 10
+    },
+    "roll_deg": {
+     "mean": 0.023381950305979154,
+     "lo": 0.014532570231798015,
+     "hi": 0.03342429927168489,
+     "n": 10
+    },
+    "jello": {
+     "mean": 0.778720224021731,
+     "lo": 0.521563227296624,
+     "hi": 1.055684430687243,
+     "n": 10
+    },
+    "row_wobble": {
+     "mean": 0.732781648480332,
+     "lo": 0.48096311939453595,
+     "hi": 1.0061437026856213,
+     "n": 10
+    },
+    "corner": {
+     "mean": 0.7104205623813474,
+     "lo": 0.5897926344043825,
+     "hi": 0.8474193197434148,
+     "n": 10
+    },
+    "jumps1": {
+     "mean": 0.8,
+     "lo": 0.0,
+     "hi": 1.8,
+     "n": 10
+    },
+    "jumps05": {
+     "mean": 3.9,
+     "lo": 2.1,
+     "hi": 6.3,
+     "n": 10
+    },
+    "crop_plan": {
+     "mean": 0.6156803548813885,
+     "lo": 0.6045784626074716,
+     "hi": 0.6258288404920942,
+     "n": 10
+    },
+    "win": {
+     "mean": 0.92512077294686,
+     "lo": 0.8429951690821257,
+     "hi": 0.9845410628019324,
+     "n": 10
+    }
+   },
+   "ref": "gf",
+   "ref_mean": {
+    "hf": 1.5591706171282484,
+    "calm": 0.6102038823745539,
+    "b28": 1.5020572295981067,
+    "b830": 0.2697248788269084,
+    "roll_deg": 0.06692567858720752,
+    "jello": 0.8346677101251592
+   },
+   "geo_ratio_vs_ref": {
+    "hf": 0.36549304970159213,
+    "calm": 0.28806242589266523,
+    "b28": 0.3604723179436207,
+    "b830": 0.5166872818774129,
+    "roll_deg": 0.3004462980782823,
+    "jello": 0.918142158723445
+   },
+   "beats_ref_hf": 10,
+   "win_pooled": 0.9230769230769231,
+   "win_ge_90": 8,
+   "axes_rms_over_windows": {
+    "sp": {
+     "hf": {
+      "tx": 0.5233698097897485,
+      "ty": 0.21317446137837312,
+      "roll": 0.31090572792718174,
+      "scale": 0.431278501929943
+     },
+     "2-8": {
+      "tx": 0.5276293405108659,
+      "ty": 0.2013438575127689,
+      "roll": 0.2861701898994206,
+      "scale": 0.4298083703303316
+     },
+     "8-30": {
+      "tx": 0.05896542059099823,
+      "ty": 0.07290791696359272,
+      "roll": 0.12876737832925853,
+      "scale": 0.042926184466285815
+     },
+     "calm": {
+      "tx": 0.10707326520547389,
+      "ty": 0.08891129225734798,
+      "roll": 0.13052717957806817,
+      "scale": 0.07791230284885875
+     }
+    },
+    "gf": {
+     "hf": {
+      "tx": 1.1922779628648028,
+      "ty": 0.5387792220599129,
+      "roll": 0.7978818186249873,
+      "scale": 1.2358122700450627
+     },
+     "2-8": {
+      "tx": 1.1378294107877767,
+      "ty": 0.5258967199371211,
+      "roll": 0.7503658559870555,
+      "scale": 1.2224809981599374
+     },
+     "8-30": {
+      "tx": 0.07860826710599317,
+      "ty": 0.11970466775257417,
+      "roll": 0.23254762438057439,
+      "scale": 0.05114398903694251
+     },
+     "calm": {
+      "tx": 0.18106535466395363,
+      "ty": 0.2513787989664744,
+      "roll": 0.5334889041474256,
+      "scale": 0.1335267655330267
+     }
+    }
+   }
+  },
+  "oa4": {
+   "n": 5,
+   "passed": 3,
+   "mean_hf": 0.8273926158420439,
+   "mean_calm": 0.09870844103410079,
+   "mean_b28": 0.8520794750858816,
+   "mean_b830": 0.07909478063908135,
+   "mean_roll_deg": 0.02548259869439572,
+   "mean_roll830_deg": 0.0025010506883438636,
+   "mean_jello": 1.3463075845022185,
+   "mean_row_wobble": 1.112699246931847,
+   "mean_corner": 0.9290007835421322,
+   "mean_crop_plan": 0.5940766394633913,
+   "mean_crop_fit": 0.5940966351765333,
+   "jumps1": 3,
+   "jumps05": 15,
+   "check_fails": {
+    "jumps_gt_1px": 2
+   },
+   "ci": {
+    "hf": {
+     "mean": 0.8273926158420439,
+     "lo": 0.4547651311629153,
+     "hi": 1.1699466421592022,
+     "n": 5
+    },
+    "calm": {
+     "mean": 0.09870844103410079,
+     "lo": 0.09334575173683848,
+     "hi": 0.10407113033136309,
+     "n": 2
+    },
+    "b28": {
+     "mean": 0.8520794750858816,
+     "lo": 0.45955609230786526,
+     "hi": 1.216351908191287,
+     "n": 5
+    },
+    "b830": {
+     "mean": 0.07909478063908135,
+     "lo": 0.0549145789998398,
+     "hi": 0.10022704098503203,
+     "n": 5
+    },
+    "roll_deg": {
+     "mean": 0.02548259869439572,
+     "lo": 0.013454027077957943,
+     "hi": 0.0406351557907486,
+     "n": 5
+    },
+    "jello": {
+     "mean": 1.3463075845022185,
+     "lo": 0.9015928669005572,
+     "hi": 1.8056051283404755,
+     "n": 5
+    },
+    "row_wobble": {
+     "mean": 1.112699246931847,
+     "lo": 0.7168010827715825,
+     "hi": 1.4840586936242177,
+     "n": 5
+    },
+    "corner": {
+     "mean": 0.9290007835421322,
+     "lo": 0.3738051356570966,
+     "hi": 1.9579481067385711,
+     "n": 5
+    },
+    "jumps1": {
+     "mean": 0.6,
+     "lo": 0.0,
+     "hi": 1.4,
+     "n": 5
+    },
+    "jumps05": {
+     "mean": 3.0,
+     "lo": 1.2,
+     "hi": 4.8,
+     "n": 5
+    },
+    "crop_plan": {
+     "mean": 0.5940766394633913,
+     "lo": 0.5938551180121363,
+     "hi": 0.5943130500807806,
+     "n": 5
+    },
+    "win": {
+     "mean": 0.9800000000000001,
+     "lo": 0.9400000000000001,
+     "hi": 1.0,
+     "n": 5
+    }
+   },
+   "ref": "orig",
+   "ref_mean": {
+    "hf": 3.109047118394785,
+    "calm": 2.231453773697396,
+    "b28": 3.1521767530801315,
+    "b830": 0.3704974607517669,
+    "roll_deg": 0.1596250662835986,
+    "jello": 2.0185660997173445
+   },
+   "geo_ratio_vs_ref": {
+    "hf": 0.23303322597765427,
+    "calm": 0.04426819068855066,
+    "b28": 0.23464960043112754,
+    "b830": 0.20170458285771492,
+    "roll_deg": 0.14364827799477675,
+    "jello": 0.6904839263005792
+   },
+   "beats_ref_hf": 5,
+   "win_pooled": 0.98,
+   "win_ge_90": 5,
+   "axes_rms_over_windows": {
+    "sp": {
+     "hf": {
+      "tx": 0.40111454441640604,
+      "ty": 0.3430511901820782,
+      "roll": 0.3655784804936258,
+      "scale": 0.6656083574117272
+     },
+     "2-8": {
+      "tx": 0.4205707448305951,
+      "ty": 0.3512088047329492,
+      "roll": 0.37095230735998647,
+      "scale": 0.6914574873193118
+     },
+     "8-30": {
+      "tx": 0.030889942873786266,
+      "ty": 0.029912045847632317,
+      "roll": 0.03126467733100985,
+      "scale": 0.06401499318252224
+     },
+     "calm": {
+      "tx": 0.05722624199986265,
+      "ty": 0.06315395938210927,
+      "roll": 0.03806327068862725,
+      "scale": 0.032558206850222274
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 1.5951260594665224,
+      "ty": 1.9115039271426262,
+      "roll": 2.0952571312964143,
+      "scale": 0.5576078294754703
+     },
+     "2-8": {
+      "tx": 1.6274874939114468,
+      "ty": 1.942108340885877,
+      "roll": 2.121722160383562,
+      "scale": 0.5551697214699697
+     },
+     "8-30": {
+      "tx": 0.1267585386836108,
+      "ty": 0.2167567749227066,
+      "roll": 0.27136055767194683,
+      "scale": 0.05421010890391799
+     },
+     "calm": {
+      "tx": 1.7131833111243941,
+      "ty": 0.8031653343977371,
+      "roll": 1.188412056086692,
+      "scale": 0.0955079588653275
+     }
+    }
+   }
+  },
+  "o4": {
+   "n": 4,
+   "passed": 1,
+   "mean_hf": 0.5447912090999436,
+   "mean_calm": 0.20734726625847494,
+   "mean_b28": 0.5209255659804529,
+   "mean_b830": 0.13917166574663145,
+   "mean_roll_deg": 0.016226545031293442,
+   "mean_roll830_deg": 0.004767320804719926,
+   "mean_jello": 0.9482509714134427,
+   "mean_row_wobble": 0.7410566507057098,
+   "mean_corner": 2.9768155854575427,
+   "mean_crop_plan": 0.6138677286981508,
+   "mean_crop_fit": 0.6140694865945839,
+   "jumps1": 6,
+   "jumps05": 10,
+   "check_fails": {
+    "jumps_gt_1px": 3,
+    "winrate_vs_original": 1,
+    "jello": 1
+   },
+   "ci": {
+    "hf": {
+     "mean": 0.5447912090999436,
+     "lo": 0.17881909292058137,
+     "hi": 1.0279228673558987,
+     "n": 4
+    },
+    "calm": {
+     "mean": 0.20734726625847494,
+     "lo": 0.11515917426699455,
+     "hi": 0.2995353582499553,
+     "n": 2
+    },
+    "b28": {
+     "mean": 0.5209255659804529,
+     "lo": 0.15439611975887907,
+     "hi": 1.0091980414412616,
+     "n": 4
+    },
+    "b830": {
+     "mean": 0.13917166574663145,
+     "lo": 0.08501948411000038,
+     "hi": 0.19239760307843787,
+     "n": 4
+    },
+    "roll_deg": {
+     "mean": 0.016226545031293442,
+     "lo": 0.007185340049008226,
+     "hi": 0.030183504868022574,
+     "n": 4
+    },
+    "jello": {
+     "mean": 0.9482509714134427,
+     "lo": 0.3597981071396018,
+     "hi": 1.9090334425562316,
+     "n": 4
+    },
+    "row_wobble": {
+     "mean": 0.7410566507057098,
+     "lo": 0.3222814161192289,
+     "hi": 1.4203517054368853,
+     "n": 4
+    },
+    "corner": {
+     "mean": 2.9768155854575427,
+     "lo": 1.078579773326892,
+     "hi": 5.542123952397505,
+     "n": 4
+    },
+    "jumps1": {
+     "mean": 1.5,
+     "lo": 0.5,
+     "hi": 2.5,
+     "n": 4
+    },
+    "jumps05": {
+     "mean": 2.5,
+     "lo": 0.75,
+     "hi": 3.75,
+     "n": 4
+    },
+    "crop_plan": {
+     "mean": 0.6138677286981508,
+     "lo": 0.6134323619140666,
+     "hi": 0.6141946631360947,
+     "n": 4
+    },
+    "win": {
+     "mean": 0.9,
+     "lo": 0.7000000000000001,
+     "hi": 1.0,
+     "n": 4
+    }
+   },
+   "ref": "orig",
+   "ref_mean": {
+    "hf": 1.1389411110681888,
+    "calm": 0.5117207621400013,
+    "b28": 1.1417435916698004,
+    "b830": 0.21739747353316147,
+    "roll_deg": 0.05098868161194728,
+    "jello": 0.9759048280340247
+   },
+   "geo_ratio_vs_ref": {
+    "hf": 0.354740219731857,
+    "calm": 0.3707244915409887,
+    "b28": 0.3224801475042719,
+    "b830": 0.6241959617329554,
+    "roll_deg": 0.28259135683370334,
+    "jello": 0.8392842018261599
+   },
+   "beats_ref_hf": 4,
+   "win_pooled": 0.9024390243902439,
+   "win_ge_90": 3,
+   "axes_rms_over_windows": {
+    "sp": {
+     "hf": {
+      "tx": 0.3013820636939964,
+      "ty": 0.3695534129527234,
+      "roll": 0.22726559362831783,
+      "scale": 0.47560462236420487
+     },
+     "2-8": {
+      "tx": 0.29522782077526233,
+      "ty": 0.3687032976188967,
+      "roll": 0.2251740327029141,
+      "scale": 0.45788985480387656
+     },
+     "8-30": {
+      "tx": 0.08616789016899029,
+      "ty": 0.09339867454814887,
+      "roll": 0.05630493608959559,
+      "scale": 0.056697922526044886
+     },
+     "calm": {
+      "tx": 0.14753597828719023,
+      "ty": 0.14053405595912127,
+      "roll": 0.07698977061075261,
+      "scale": 0.0636193569420231
+     }
+    },
+    "orig": {
+     "hf": {
+      "tx": 0.6258964799269411,
+      "ty": 0.733771361638637,
+      "roll": 0.6123302555210653,
+      "scale": 0.35508159310650367
+     },
+     "2-8": {
+      "tx": 0.634173837990179,
+      "ty": 0.7310148790458315,
+      "roll": 0.61132908317494,
+      "scale": 0.3519172402128245
+     },
+     "8-30": {
+      "tx": 0.0853366664440673,
+      "ty": 0.17360525400028812,
+      "roll": 0.11672797763586776,
+      "scale": 0.04479768779387015
+     },
+     "calm": {
+      "tx": 0.2851729760752713,
+      "ty": 0.3268180082967664,
+      "roll": 0.2729121668835514,
+      "scale": 0.10059184419243533
+     }
+    }
+   }
+  }
+ }
+}

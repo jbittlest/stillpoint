@@ -63,7 +63,7 @@ struct AnalysisSection: View {
             } else if clip.isAnalyzed, let s = clip.manifest?.summary {
                 VStack(alignment: .leading, spacing: 10) {
                     if let f = clip.failure { FailurePanel(clip: clip, info: f) }
-                    JitterReadout(summary: s)
+                    JitterReadout(summary: s, params: clip.manifest?.params)
                 }
             } else if let f = clip.failure {
                 VStack(alignment: .leading, spacing: 10) {
@@ -327,6 +327,7 @@ struct StageSteps: View {
 /// Only numbers the engine produced are shown — no derived percentages, no floors.
 struct JitterReadout: View {
     let summary: JitterSummary
+    var params: AnalysisParams? = nil
 
     var body: some View {
         if let q = summary.quality, !q.metrics.isEmpty { independent(q) } else { selfMeasured }
@@ -367,7 +368,9 @@ struct JitterReadout: View {
                     row("Field of view", fovText)
                     if let c = q.cropFootprintMean { row("Source frame used", "\(Int((c * 100).rounded()))%") }
                     if let c = q.coverageFrac { row("Measured on", "\(Int((c * 100).rounded()))% of the clip (sampled)") }
+                    optionRows
                 }
+                if let t = summary.timecal { TimingReadout(t: t) }
                 Rectangle().fill(Theme.hairline).frame(height: 1)
                 Text("\(q.units ?? "px @1080p"). Method: \(q.method ?? "not reported by the engine").")
                     .font(.system(size: 10)).foregroundStyle(Theme.text3).lineLimit(4)
@@ -399,7 +402,9 @@ struct JitterReadout: View {
                     if let t = summary.trustedFrac {
                         row("Checked by vision", "\(Int((t * 100).rounded()))% of frames", warn: t < 0.5)
                     }
+                    optionRows
                 }
+                if let t = summary.timecal { TimingReadout(t: t) }
                 Rectangle().fill(Theme.hairline).frame(height: 1)
                 (Text(summary.qualityError.map { "Independent check unavailable: \($0). " }
                       ?? "This analysis predates the independent check — re-analyze to measure original vs stabilized. ")
@@ -408,6 +413,23 @@ struct JitterReadout: View {
                     .foregroundColor(Theme.text3))
                     .font(.system(size: 10.5)).fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// The engine v5 options this analysis used, with what they did (numbers from the engine's report only).
+    @ViewBuilder private var optionRows: some View {
+        if params?.horizonLock == true {
+            let st = Int(((params?.horizonStrength ?? 1) * 100).rounded()), bank = Int((params?.rollLimitDeg ?? 0).rounded())
+            let lvl = summary.horizon?.fullLevelFrac.map { " · level \(Int(($0 * 100).rounded()))% of frames" } ?? ""
+            row("Horizon lock", "\(st)%" + (bank > 0 ? " · ±\(bank)°" : "") + lvl)
+        }
+        if params?.fill == true {
+            if let e = summary.fill?.error { row("Full-frame fill", "failed: \(e.prefix(40))", warn: true) }
+            else { row("Full-frame fill", summary.fill?.framesFrac.map { "on · \(Fmt.pct($0)) of frames filled" } ?? "on") }
+        }
+        if params?.mesh == true {
+            if let e = summary.mesh?.error { row("Max quality", "failed: \(e.prefix(40))", warn: true) }
+            else { row("Max quality", summary.mesh?.offsetRmsPx.map { "mesh · \(Fmt.px($0)) px rms" } ?? "on") }
         }
     }
 
@@ -453,6 +475,82 @@ struct JitterReadout: View {
     }
 }
 
+/// "Timing auto-calibration": what the engine's per-clip timing fit did (summary['timecal']).
+struct TimingReadout: View {
+    let t: TimecalSummary
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color)
+                .frame(width: 14).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Timing auto-calibration").font(.system(size: 11.5)).foregroundStyle(Theme.text3)
+                (Text(value.capitalizedFirst).foregroundColor(Theme.text2)
+                 + Text(detail.map { "  " + $0.replacingOccurrences(of: " ", with: "\u{00A0}") } ?? "").foregroundColor(Theme.text3))
+                    .font(.system(size: 11.5).monospacedDigit())
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .help(help)
+    }
+    private var icon: String {
+        switch t.state {
+        case "applied": return "clock.arrow.circlepath"
+        case "confirmed": return "checkmark.seal"
+        case "failed": return "exclamationmark.triangle"
+        default: return "minus.circle"
+        }
+    }
+    private var color: Color {
+        switch t.state {
+        case "applied", "confirmed": return Theme.good
+        case "failed": return Theme.warn
+        default: return Theme.text3
+        }
+    }
+    static func ms(_ v: Double) -> String {
+        let a = abs(v)
+        let s = a < 0.1 ? String(format: "%.3f", a) : String(format: "%.2f", a)
+        return (v < 0 ? "−" : "+") + s
+    }
+    private var sigma: String { t.sigmaMs.map { String(format: " ± %.3f", $0) } ?? "" }
+    /// The short result (right of the label).
+    var value: String {
+        switch t.state {
+        case "applied":
+            if let o = t.offsetMs, o != 0 { return "\(Self.ms(o)) ms applied" }
+            return "correction applied"
+        case "confirmed": return "metadata timing confirmed"
+        case "kept": return "metadata timing kept"
+        case "skipped": return "not run"
+        case "failed": return "failed, metadata kept"
+        case "off": return "off"
+        default: return t.state
+        }
+    }
+    /// The numbers behind it (second line).
+    var detail: String? {
+        let fit = t.estimateMs.map { "fit \(Self.ms($0))\(sigma) ms" }
+        switch t.state {
+        case "applied":
+            var parts: [String] = []
+            if let o = t.offsetMs, o != 0 { parts.append("offset \(Self.ms(o))\(sigma) ms") }
+            if let r = t.readoutPct { parts.append(String(format: "readout %+.1f%%", r)) }
+            if let f = t.focalPct { parts.append(String(format: "focal %+.2f%%", f)) }
+            if let b = t.boxPct { parts.append(String(format: "exposure %+.0f%%", b)) }
+            return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        case "confirmed": return fit
+        case "kept": return fit.map { $0 + ", not confirmed on the clip" } ?? t.detail   // else the engine's reason
+        case "skipped": return t.detail
+        default: return nil
+        }
+    }
+    private var help: String {
+        var h = "Stillpoint fits the gyro-to-picture timing (offset, readout) on a few windows of the clip and applies it only when it is confident and confirmed on held-out windows; otherwise the camera's own timing metadata is used."
+        if let d = t.detail, !d.isEmpty { h += "\n\nEngine: " + d }
+        return h
+    }
+}
+
 // MARK: - Controls
 
 struct StabilizationSection: View {
@@ -485,15 +583,19 @@ struct StabilizationSection: View {
                          marker: clip.manifest?.params.fovDeg)
                 legend("Tighter · steadier", "Wider")
             }
-            horizonRow(enabled: enabled)
+            OptionsGroup(clip: clip, enabled: enabled)
             if clip.isAnalyzed {
                 if clip.settingsChanged {
-                    HStack(spacing: 10) {
+                    HStack(alignment: .center, spacing: 10) {
                         Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.warn)
-                        Text("Settings changed").font(.system(size: 12, weight: .medium))
-                        Spacer()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Settings changed").font(.system(size: 12, weight: .medium))
+                            Text(clip.changedSettings.joined(separator: " · ")).font(.system(size: 10.5))
+                                .foregroundStyle(Theme.text3).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 4)
                         Button("Re-analyze") { model.analyze(clip) }
-                            .buttonStyle(PrimaryButtonStyle(tint: Theme.accent, enabled: clip.canAnalyze)).frame(width: 110)
+                            .buttonStyle(PrimaryButtonStyle(tint: Theme.accent, enabled: clip.canAnalyze)).frame(width: 104)
                             .disabled(!clip.canAnalyze)
                     }
                     .padding(10)
@@ -509,28 +611,6 @@ struct StabilizationSection: View {
                 if !clip.isBusy, let pf = model.preflight(clip) { PreflightView(pf: pf, compact: true) }
             }
         }
-    }
-
-    private func horizonRow(enabled: Bool) -> some View {
-        let supported = clip.probe?.horizonLockSupported ?? false
-        return HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text("Horizon lock").font(.system(size: 12.5, weight: .medium))
-                    if supported {
-                        Text("BETA").font(.system(size: 8.5, weight: .bold)).tracking(0.6).foregroundStyle(Theme.warn)
-                            .padding(.horizontal, 4).padding(.vertical, 1.5)
-                            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.warn.opacity(0.14)))
-                    }
-                }
-                Text(supported ? "Keeps the horizon level through rolls" : "Coming soon")
-                    .font(.system(size: 11)).foregroundStyle(Theme.text3)
-            }
-            Spacer()
-            SPToggle(isOn: $clip.horizonLock, enabled: supported && enabled)
-        }
-        .help(supported ? "Levels the horizon using the camera's gravity estimate. Untested on hard FPV manoeuvres."
-                        : "Coming soon")
     }
 
     private func legend(_ a: String, _ b: String) -> some View {
@@ -550,6 +630,162 @@ struct StabilizationSection: View {
         case ..<1.7: return "Smooth"
         default: return "Floaty"
         }
+    }
+}
+
+/// Engine v5 options: Horizon lock (strength, bank limit), Full-frame fill, Max quality. What each clip starts with,
+/// what is supported and what cannot be combined all come from the engine (probe's options); options the engine
+/// cannot combine disable each other with a hint instead of failing the analysis.
+struct OptionsGroup: View {
+    @ObservedObject var clip: Clip
+    let enabled: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            horizon
+            divider
+            fill
+            divider
+            maxQuality
+        }
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black.opacity(0.22)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.hairline))
+    }
+
+    private var divider: some View { Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 40) }
+
+    // MARK: horizon lock
+
+    private var horizon: some View {
+        let supported = clip.horizonSupported && clip.probe != nil
+        let on = clip.horizonLock && supported
+        return VStack(alignment: .leading, spacing: 10) {
+            OptionRow(icon: "level", title: "Horizon lock", badge: supported ? "BETA" : nil,
+                      subtitle: supported ? "Keeps the horizon level through rolls"
+                                          : "Needs the camera's gravity data — not in this clip",
+                      isOn: $clip.horizonLock, enabled: supported && enabled)
+            if on {
+                VStack(alignment: .leading, spacing: 10) {
+                    slider("Strength", value: "\(Int((clip.horizonStrength * 100).rounded()))%",
+                           binding: $clip.horizonStrength, range: clip.options?.strengthRange ?? 0.1...1, step: 0.05,
+                           marker: markerStrength, legend: ("Gentle", "Full"))
+                    slider("Bank limit", value: bankText, binding: $clip.rollLimitDeg,
+                           range: clip.options?.rollLimitRange ?? 0...45, step: 1, marker: markerRoll,
+                           legend: ("Fully level", "Keeps banks to \(Int((clip.options?.rollLimitRange ?? 0...45).upperBound))°"))
+                }
+                .padding(.leading, 40).padding(.trailing, 12)
+            }
+            if on || clip.horizonLock, let n = clip.note("horizon") {
+                NoteRow(item: .init(level: .warn, icon: "exclamationmark.triangle", text: n))
+                    .padding(.leading, 40).padding(.trailing, 10)
+            }
+        }
+        .padding(.bottom, on || (clip.horizonLock && clip.note("horizon") != nil) ? 12 : 0)
+        .help(supported ? "Levels the horizon using the camera's gravity estimate, never zooming in beyond the unlocked path. It fades out when the camera is steep, inverted or flipping."
+                        : "This clip has no gravity data, so the horizon cannot be levelled.")
+    }
+
+    private var bankText: String {
+        let d = Int(clip.rollLimitDeg.rounded())
+        return d == 0 ? "0° · fully level" : "±\(d)° kept"
+    }
+    private var markerStrength: Double? {
+        guard let p = clip.manifest?.params, p.horizonLock else { return nil }
+        return p.horizonStrength ?? 1
+    }
+    private var markerRoll: Double? {
+        guard let p = clip.manifest?.params, p.horizonLock else { return nil }
+        return p.rollLimitDeg ?? 0
+    }
+
+    private func slider(_ title: String, value: String, binding: Binding<Double>, range: ClosedRange<Double>,
+                        step: Double, marker: Double?, legend: (String, String)) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(title).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.text2)
+                Spacer()
+                Text(value).font(.spMono(11.5, .medium)).foregroundStyle(Theme.text2)
+            }
+            SPSlider(value: binding, range: range, step: step, enabled: enabled, marker: marker)
+            HStack { Text(legend.0); Spacer(); Text(legend.1) }
+                .font(.system(size: 10)).foregroundStyle(Theme.text3)
+        }
+    }
+
+    // MARK: fill / max quality
+
+    private var fill: some View {
+        let blocked = clip.fillBlockedBy
+        return VStack(alignment: .leading, spacing: 8) {
+            OptionRow(icon: "rectangle.dashed", title: "Full-frame fill", badge: nil,
+                      subtitle: clip.fillSupported ? "Fills the corners from neighbouring frames, so Stillpoint can keep more of the frame"
+                                                   : "Not available with this engine",
+                      isOn: $clip.fill, enabled: enabled && clip.fillSupported && blocked == nil)
+            if let b = blocked, !clip.fill {
+                hint("Not with \(b) yet — turn it off to use fill.")
+            }
+        }
+        .padding(.bottom, blocked != nil && !clip.fill ? 10 : 0)
+    }
+
+    private var maxQuality: some View {
+        let blocked = clip.maxQualityBlockedBy
+        let factor = (clip.options?.timeFactor?["mesh"]) ?? 1.4        // per camera: ~x1.4 on O3, ~x6.5 on OA4 / O4 Pro
+        let cost = factor >= 2 ? "about \(String(format: "%.0f", factor))× as long"
+                               : "about +\(Int(((factor - 1) * 100).rounded()))%"
+        return VStack(alignment: .leading, spacing: 8) {
+            OptionRow(icon: "dial.high", title: "Max quality", badge: nil,
+                      subtitle: clip.meshSupported ? "Removes extra micro-jitter; analysis takes longer (\(cost))"
+                                                   : "Not available with this engine",
+                      isOn: $clip.maxQuality, enabled: enabled && clip.meshSupported && blocked == nil)
+            if let b = blocked, !clip.maxQuality {
+                hint("Not with \(b) yet — turn it off to use Max quality.")
+            }
+        }
+        .padding(.bottom, blocked != nil && !clip.maxQuality ? 10 : 0)
+    }
+
+    private func hint(_ t: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "info.circle").font(.system(size: 10.5, weight: .medium)).padding(.top, 1)
+            Text(t).font(.system(size: 10.5)).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Theme.text3)
+        .padding(.leading, 40).padding(.trailing, 12)
+    }
+}
+
+/// One switch row of the options group: icon, title (+ badge), one-line explanation, toggle.
+struct OptionRow: View {
+    let icon: String
+    let title: String
+    let badge: String?
+    let subtitle: String
+    @Binding var isOn: Bool
+    let enabled: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon).font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(isOn && enabled ? Theme.accent : Theme.text3)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title).font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(enabled || isOn ? Theme.text : Theme.text2)
+                    if let badge {
+                        Text(badge).font(.system(size: 8.5, weight: .bold)).tracking(0.6).foregroundStyle(Theme.warn)
+                            .padding(.horizontal, 4).padding(.vertical, 1.5)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(Theme.warn.opacity(0.14)))
+                    }
+                }
+                Text(subtitle).font(.system(size: 10.5)).foregroundStyle(Theme.text3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 6)
+            SPToggle(isOn: $isOn, enabled: enabled)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 11)
     }
 }
 

@@ -64,6 +64,17 @@ def test_loop_off_cameras():
                                AnalyzeParams(loop_off_cameras=('Osmo Action 4',)))
 
 
+def test_horizon_lock_params_reach_the_smoother():
+    """AnalyzeParams.horizon_lock / roll_limit_deg -> SmoothParams (off by default; smooth_overrides still win)."""
+    from stillpoint.pipeline import _smooth_params
+    sp = _smooth_params(AnalyzeParams(), 1500.0, None, None)
+    assert sp.lock_strength() == 0.0 and sp.roll_limit_deg == 0.0
+    sp = _smooth_params(AnalyzeParams(horizon_lock=0.7, roll_limit_deg=20.0), 1500.0, None, None)
+    assert sp.lock_strength() == 0.7 and sp.roll_limit_deg == 20.0
+    sp = _smooth_params(AnalyzeParams(horizon_lock=0.7, smooth_overrides=dict(horizon_lock=True)), 1500.0, None, None)
+    assert sp.lock_strength() == 1.0
+
+
 def test_window_hf_and_mask():
     fs, F = 59.94, 600
     t = np.arange(F) / fs

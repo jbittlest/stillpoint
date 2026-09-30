@@ -89,7 +89,7 @@ def exposure_avg_window(exposure: np.ndarray) -> np.ndarray:
 
 
 def exposure_averaged_q(q_cam_fn: Callable[[np.ndarray], np.ndarray], t_rows: np.ndarray, exposure: np.ndarray,
-                        taps: int = 9, chunk: int = 2048) -> np.ndarray:
+                        taps: int = 9, chunk: int = 2048, sample_rate: float = 0.0) -> np.ndarray:
     """Mean camera orientation over each row's exposure window [t - e/2, t + e/2] (t = row mid-exposure time).
 
     A row records the time-average of the image motion during its exposure; at short shutters and 200-300 Hz prop
@@ -97,20 +97,31 @@ def exposure_averaged_q(q_cam_fn: Callable[[np.ndarray], np.ndarray], t_rows: np
     correcting with the instantaneous orientation re-injects vibration that the picture only shows as blur
     (DJI_20260927091931_0012: gyro-vs-image row misfit -10..35 % at 3.5-4.5 ms exposures; gyro HF gain fits 1.0
     only with this). t_rows (F,R), exposure (F,) s -> (F,R,4). Box filter with `taps` mid-point samples,
-    sign-aligned to the centre sample, normalized (chordal L2 mean: exact to O(angle^3) for these tiny spreads)."""
+    sign-aligned to the centre sample, normalized (chordal L2 mean: exact to O(angle^3) for these tiny spreads).
+    sample_rate > 0 (the gyro rate): frames whose window spans more gyro samples than `taps` get more taps (at least
+    one per gyro sample, in steps of 2x) so long exposures (1/61 s = 16 samples at 1 kHz) are not aliased; windows up
+    to (taps - 1) samples keep exactly `taps` taps."""
     t_rows = np.asarray(t_rows, np.float64)
     e = np.nan_to_num(np.asarray(exposure, np.float64).reshape(-1), nan=0.0)
-    e = np.clip(e, 0.0, 0.05)
-    u = (np.arange(taps, dtype=np.float64) + 0.5) / taps - 0.5                # (n,) in (-0.5, 0.5)
+    e = np.clip(e, 0.0, 0.1)                                                  # (timecal may widen the box)
+    need = np.full(len(e), int(taps), np.int64)
+    if sample_rate and sample_rate > 0:
+        n_s = np.ceil(e * float(sample_rate)).astype(np.int64) + 1
+        lvl = np.maximum(0, np.ceil(np.log2(np.maximum(n_s, 1) / float(taps)))).astype(np.int64)
+        need = np.minimum(int(taps) * (2 ** np.minimum(lvl, 4)), 16 * int(taps))
     out = np.empty(t_rows.shape + (4,), np.float64)
-    for a in range(0, t_rows.shape[0], chunk):
-        b = min(a + chunk, t_rows.shape[0])
-        tt = t_rows[a:b, :, None] + e[a:b, None, None] * u[None, None, :]    # (f,R,n)
-        q = np.asarray(q_cam_fn(tt), np.float64)                              # (f,R,n,4)
-        qc = np.asarray(q_cam_fn(t_rows[a:b]), np.float64)                    # (f,R,4) centre (sign reference)
-        sgn = np.sign(np.einsum('frnc,frc->frn', q, qc))
-        sgn[sgn == 0] = 1.0
-        out[a:b] = qnormalize((q * sgn[..., None]).sum(axis=2))
+    for n_t in np.unique(need):
+        u = (np.arange(n_t, dtype=np.float64) + 0.5) / n_t - 0.5            # (n,) in (-0.5, 0.5)
+        idx = np.flatnonzero(need == n_t)
+        ch = max(16, int(chunk * taps // n_t))
+        for a in range(0, len(idx), ch):
+            sel = idx[a:a + ch]
+            tt = t_rows[sel, :, None] + e[sel, None, None] * u[None, None, :]    # (f,R,n)
+            q = np.asarray(q_cam_fn(tt), np.float64)                              # (f,R,n,4)
+            qc = np.asarray(q_cam_fn(t_rows[sel]), np.float64)                    # (f,R,4) centre (sign reference)
+            sgn = np.sign(np.einsum('frnc,frc->frn', q, qc))
+            sgn[sgn == 0] = 1.0
+            out[sel] = qnormalize((q * sgn[..., None]).sum(axis=2))
     return out
 
 
@@ -143,10 +154,12 @@ def build_plan(tel: Telemetry, tm: Optional[TimeModel], q_cam_fn: Callable[[np.n
     ys = row_samples_y(H, n_rows)                                     # (R,)
     t_rows = tel.frame_t[frames][:, None] + readout * ((ys[None, :] + 0.5) / H - 0.5)   # (F,R)
     ex = np.asarray(tel.exposure_s, np.float64)
+    ex_scale = float(getattr(tm, 'exposure_scale', 1.0) or 1.0) if tm is not None else 1.0
     use_avg = bool(exposure_avg and tel.has_highrate and ex.ndim == 1 and len(ex) == tel.n_frames
-                   and np.max(exposure_avg_window(ex[frames]), initial=0.0) * tel.imu_rate >= 1.0)
+                   and np.max(exposure_avg_window(ex[frames]), initial=0.0) * ex_scale * tel.imu_rate >= 1.0)
     if use_avg:
-        q_cam = exposure_averaged_q(q_cam_fn, t_rows, exposure_avg_window(ex[frames]), taps=exposure_taps)
+        q_cam = exposure_averaged_q(q_cam_fn, t_rows, exposure_avg_window(ex[frames]) * ex_scale, taps=exposure_taps,
+                                    sample_rate=float(tel.imu_rate))
     else:
         q_cam = q_cam_fn(t_rows)                                      # (F,R,4)
     Rc = quat_to_mat(q_cam)                                           # (F,R,3,3)
@@ -156,7 +169,7 @@ def build_plan(tel: Telemetry, tm: Optional[TimeModel], q_cam_fn: Callable[[np.n
     tmd = {}
     if tm is not None:
         tmd = {'offset_s': float(tm.offset_s), 'skew': float(tm.skew), 'readout_s': readout,
-               'focal_scale': float(tm.focal_scale),
+               'focal_scale': float(tm.focal_scale), 'exposure_scale': ex_scale,
                'extrinsic_rotvec': [float(v) for v in np.asarray(tm.extrinsic_rotvec).reshape(3)]}
     return Plan(src_w=int(tel.width), src_h=H, out_w=int(out_w), out_h=int(out_h), lens=lens,
                 frame_pts=np.asarray(tel.frame_pts, dtype=np.float64)[frames].copy(), out_fx=out_fx,

@@ -1,11 +1,18 @@
 // Headless check that the preview compositor renders the same stabilised frame as the export renderer.
 //
 //   Stillpoint --selftest [--clip CLIP] [--plan PLAN.spplan] [--frames 5,120] [--out DIR]
+//                         [--fill-plan P] [--fill-clip C] [--fill-window START,N] [--mesh-plan P] [--no-v5] [--no-player]
 //
 // For each frame N: sprender --no-write --dump-frames N (warped 10-bit planes before encoding) vs the app's
 // AVVideoCompositing compositor driven through AVAssetReaderVideoCompositionOutput at composition time PTS(N).
 // Pass: PSNR(Y) and PSNR(CbCr) > 40 dB for every frame, split(0) == after bit-exactly, the "before" view really differs,
 // and plan-record lookup picks the displayed frame.
+// Engine v5 (unless --no-v5): a MESH-residual plan of --clip and a full-frame FILL plan (given, or made once via the
+// bridge into <out>/v5 and reused) through the same compositor: fill / mesh kernels, PSNR vs sprender, split(0) ==
+// after, the mesh really moves pixels, and a fill plan never shows black borders -- neither paused (neighbouring
+// frames decoded: export-identical) nor playing (cached neighbours only: the kernel's soft edge extension). The fill
+// plan needs motion (on a calm clip the neighbours never see past the frame edge and the engine zooms instead): by
+// default it is DJI_0034 frames 1350-1589 at a wide field of view (--fill-clip / --fill-window change that).
 import AVFoundation
 import CoreImage
 import Foundation
@@ -45,7 +52,7 @@ enum SelfTest {
         }
         do {
             let engine = try WarpEngine.shared()
-            log("PASS warp.metal compiled at runtime: \(engine.shaderPath) (sp_warp_luma, sp_warp_chroma + app split kernels)")
+            log("PASS warp.metal compiled at runtime: \(engine.shaderPath) (\(engine.kernelNames))")
         } catch {
             log("FAIL shader compile: \(error)")
             return 2
@@ -91,6 +98,7 @@ enum SelfTest {
             let (pb, _, _) = psnr(a.y, b.y)
             check(pb < 40, "frame \(n) 'before' view differs from stabilised (\(fmtdB(pb)) dB)")
         }
+        if !args.contains("--no-v5") { v5(clip: clip, out: out, args: args, check: check) }
         // GPU cost per composed frame (reader path, 40 frames), export filter vs playback filter
         for (name, k) in [("lanczos3", Float(0)), ("catmull-rom", Float(1))] {
             var st = WarpSettings(); st.kernel = k
@@ -110,6 +118,149 @@ enum SelfTest {
         log(String(format: "RESULT selftest %@ worst PSNR %@ dB over frames %@", ok ? "PASS" : "FAIL", fmtdB(worst),
                    frames.map(String.init).joined(separator: ",")))
         return ok ? 0 : 1
+    }
+
+    // MARK: engine v5 plans (fill, mesh)
+
+    /// A cached analysis in `dir` made with `flags` for this exact clip, else one made now through the bridge.
+    static func ensurePlan(clip: URL, dir: URL, flags: [String], matches: (AnalysisParams) -> Bool) -> URL? {
+        if let m = JSONIO.loadManifest(dir), let id = fileIdentity(clip), m.clip.sizeBytes == id.size,
+           m.clip.mtimeNs == id.mtimeNs, matches(m.params), FileManager.default.fileExists(atPath: m.plan) {
+            log("  reusing \(dir.lastPathComponent) (\(m.created ?? "?"))")
+            return URL(fileURLWithPath: m.plan)
+        }
+        log("  analyzing \(clip.lastPathComponent) \(flags.joined(separator: " ")) via the bridge -> \(dir.path)")
+        let t0 = Date()
+        switch BridgeJob.runSync(["analyze", clip.path, "--out", dir.path] + flags, timeout: 1500) {
+        case .success:
+            log(String(format: "  analysis done in %.0f s", Date().timeIntervalSince(t0)))
+            let u = dir.appendingPathComponent("plan.spplan")
+            return FileManager.default.fileExists(atPath: u.path) ? u : nil
+        case .failure(let e):
+            log("  analysis failed: \(e.localizedDescription)")
+            return nil
+        }
+    }
+
+    static func blackCount(_ y: [UInt16], at idx: [Int]) -> Int { idx.reduce(0) { $0 + (y[$1] == 4096 ? 1 : 0) } }
+
+    static func v5(clip: URL, out: URL, args: [String], check: (Bool, String) -> Void) {
+        func opt(_ n: String) -> String? {
+            if let i = args.firstIndex(of: n), i + 1 < args.count { return args[i + 1] }
+            return nil
+        }
+        let dir = out.appendingPathComponent("v5", isDirectory: true)
+        let stem = clip.deletingPathExtension().lastPathComponent
+        let fillClip = URL(fileURLWithPath: opt("--fill-clip") ?? (opt("--fill-plan") != nil ? clip.path : Footage.o3("DJI_0034.MP4")))
+        let window = (opt("--fill-window") ?? (opt("--fill-clip") == nil && opt("--fill-plan") == nil ? "1350,240" : ""))
+            .split(separator: ",").compactMap { Int($0) }
+        var wide = 110.0                                  // fill plan: a wide view, so the border fill has work to do
+        if case .success(let obj) = BridgeJob.runSync(["probe", fillClip.path], timeout: 120),
+           let p = ProbeInfo.decode(result: obj), let f = p.fov {
+            wide = max(f.defaultDeg, f.maxDeg - 2)
+            check(p.options != nil, "probe reports the engine's options: defaults fill=\(p.options?.defaults.fill ?? false) mesh=\(p.options?.defaults.mesh ?? false) horizon=\(p.options?.defaults.horizonLock ?? -1) timecal=\(p.options?.defaults.timecal ?? false); exclusive \(p.options?.exclusive ?? [])")
+        }
+        let win = window.count == 2 ? ["--start-frame", "\(window[0])", "--max-frames", "\(window[1])"] : []
+        let fillStem = fillClip.deletingPathExtension().lastPathComponent + (window.count == 2 ? "-w\(window[0])+\(window[1])" : "")
+        let fillURL = opt("--fill-plan").map { URL(fileURLWithPath: $0) }
+            ?? ensurePlan(clip: fillClip, dir: dir.appendingPathComponent("\(fillStem)-fill"),
+                          flags: ["--fill", "--no-mesh", "--fov", String(format: "%.1f", wide)] + win,
+                          matches: { $0.fill == true })
+        // source frame index of a plan record (DJI clips: CFR, first PTS 0; window plans start mid-clip)
+        func srcIndex(_ p: PlanFile, _ r: Int) -> Int { Int((p.pts[r] / p.frameDuration).rounded()) }
+        let meshURL = opt("--mesh-plan").map { URL(fileURLWithPath: $0) }
+            ?? ensurePlan(clip: clip, dir: dir.appendingPathComponent("\(stem)-mesh"),
+                          flags: ["--mesh", "--no-fill"], matches: { $0.mesh == true })
+
+        // ---- full-frame fill
+        if let u = fillURL, let plan = try? PlanFile(url: u), plan.hasFill {
+            let clip = fillClip
+            let withSrc = (0..<plan.count).filter { plan.fillCount($0) > 0 && $0 + 1 < plan.count }
+            var frames: [Int] = []
+            for r in withSrc.sorted(by: { plan.fillFraction($0) > plan.fillFraction($1) }) where frames.allSatisfy({ abs($0 - r) >= 30 }) {
+                frames.append(r)
+                if frames.count == 2 { break }
+            }
+            let nFilled = (0..<plan.count).filter { plan.fillFraction($0) > 0 }.count
+            log("fill plan \(u.path) (\(clip.lastPathComponent), source frames \(srcIndex(plan, 0))-\(srcIndex(plan, plan.count - 1))): \(nFilled)/\(plan.count) records synthesise border pixels, \(withSrc.count) with neighbour sources, max offset \(plan.fill?.maxOffset ?? 0); testing source frames \(frames.map { srcIndex(plan, $0) })")
+            check(!frames.isEmpty, "fill plan has frames that sample neighbouring source frames")
+            for r in frames {
+                let t = plan.pts[r], n = srcIndex(plan, r)          // n: source frame index (messages, sprender)
+                let dump = out.appendingPathComponent("sprender_fill")
+                try? FileManager.default.removeItem(at: dump)
+                guard let ref = runSprender(clip: clip, plan: u, frame: n, dumpDir: dump, outW: plan.outW, outH: plan.outH) else {
+                    check(false, "sprender dump of fill frame \(n)"); continue
+                }
+                var exact = WarpSettings(); exact.fill = .exact
+                var split0 = exact; split0.mode = .split; split0.split = 0
+                var live = WarpSettings(); live.fill = .cachedOnly; live.kernel = 0     // playing, nothing cached yet
+                var plain = WarpSettings(); plain.ignoreV5 = true
+                guard let a = composite(clip: clip, plan: plan, time: t, settings: exact, save: out.appendingPathComponent("fill_exact_\(n).png")),
+                      let enc = StabilizingCompositor.encoded(at: t),
+                      let s0 = composite(clip: clip, plan: plan, time: t, settings: split0, save: nil),
+                      let e = composite(clip: clip, plan: plan, time: t, settings: live, save: out.appendingPathComponent("fill_playing_\(n).png")),
+                      let pl = composite(clip: clip, plan: plan, time: t, settings: plain, save: out.appendingPathComponent("fill_as_plain_\(n).png")) else {
+                    check(false, "compositor produced the fill frame \(n)"); continue
+                }
+                let (py, maxY, sameY) = psnr(ref.y, a.y)
+                let (pc, maxC, _) = psnr(ref.uv, a.uv)
+                check(py > 40 && pc > 40 && enc.kernel == "fill" && enc.fillSources == enc.fillWanted && enc.fillSources > 0,
+                      String(format: "fill frame %d (%.1f%% of the frame synthesised, %d/%d neighbour frames) compositor vs sprender: PSNR Y %@ dB, CbCr %@ dB, max |diff| %d / %d, %.4f%% identical",
+                             n, 100 * Double(plan.fillFraction(r)), enc.fillSources, enc.fillWanted, fmtdB(py), fmtdB(pc), maxY, maxC, 100 * sameY))
+                let (ps, _, _) = psnr(a.y + a.uv, s0.y + s0.uv)
+                check(ps.isInfinite, "fill frame \(n): split at 0 == the fill kernel's output (\(fmtdB(ps)) dB)")
+                let blackIdx = pl.y.indices.filter { pl.y[$0] == 4096 }
+                let bExact = blackCount(a.y, at: blackIdx), bLive = blackCount(e.y, at: blackIdx)
+                check(!blackIdx.isEmpty && bExact <= blackIdx.count / 200 && bLive <= blackIdx.count / 200,
+                      String(format: "fill frame %d: no black borders — %d px are black with the plain kernel (%.2f%% of the frame); black there: paused/exact %d, playing/soft-edge %d",
+                             n, blackIdx.count, 100 * Double(blackIdx.count) / Double(pl.y.count), bExact, bLive))
+                let (pe, _, _) = psnr(a.y, e.y)
+                check(!pe.isInfinite, "fill frame \(n): the neighbour frames change the border vs the soft edge (\(fmtdB(pe)) dB)")
+            }
+        } else {
+            check(false, "fill plan available (\(fillURL?.path ?? "none"))")
+        }
+
+        // ---- mesh residual
+        if let u = meshURL, let plan = try? PlanFile(url: u), let m = plan.mesh {
+            var mag = [Float](repeating: 0, count: plan.count)
+            for r in 0..<plan.count {
+                mag[r] = plan.withMesh(r) { p, n in
+                    let f = p.assumingMemoryBound(to: Float.self)
+                    return (0..<(n / 4)).reduce(Float(0)) { max($0, abs(f[$1])) }
+                } ?? 0
+            }
+            let n = (1..<(plan.count - 1)).max { mag[$0] < mag[$1] } ?? 5
+            log(String(format: "mesh plan %@: %dx%d vertices, largest offset %.2f px at frame %d", u.path, m.nx, m.ny, mag[n], n))
+            let t = plan.pts[n]
+            let dump = out.appendingPathComponent("sprender_mesh")
+            try? FileManager.default.removeItem(at: dump)
+            if let ref = runSprender(clip: clip, plan: u, frame: srcIndex(plan, n), dumpDir: dump, outW: plan.outW, outH: plan.outH) {
+                let after = WarpSettings()
+                var split0 = after; split0.mode = .split; split0.split = 0
+                var plain = after; plain.ignoreV5 = true
+                if let a = composite(clip: clip, plan: plan, time: t, settings: after, save: out.appendingPathComponent("mesh_\(n).png")),
+                   let enc = StabilizingCompositor.encoded(at: t),
+                   let s0 = composite(clip: clip, plan: plan, time: t, settings: split0, save: nil),
+                   let pl = composite(clip: clip, plan: plan, time: t, settings: plain, save: nil) {
+                    let (py, maxY, sameY) = psnr(ref.y, a.y)
+                    let (pc, maxC, _) = psnr(ref.uv, a.uv)
+                    check(py > 40 && pc > 40 && enc.kernel == "mesh",
+                          String(format: "mesh frame %d compositor vs sprender: PSNR Y %@ dB, CbCr %@ dB, max |diff| %d / %d, %.4f%% identical (kernel %@)",
+                                 n, fmtdB(py), fmtdB(pc), maxY, maxC, 100 * sameY, enc.kernel))
+                    let (ps, _, _) = psnr(a.y + a.uv, s0.y + s0.uv)
+                    check(ps.isInfinite, "mesh frame \(n): split at 0 == the mesh kernel's output (\(fmtdB(ps)) dB)")
+                    let (pm, _, _) = psnr(a.y, pl.y)
+                    check(!pm.isInfinite, "mesh frame \(n): the mesh offsets move pixels vs rotation-only (\(fmtdB(pm)) dB)")
+                } else {
+                    check(false, "compositor produced the mesh frame \(n)")
+                }
+            } else {
+                check(false, "sprender dump of mesh frame \(n)")
+            }
+        } else {
+            check(false, "mesh plan available (\(meshURL?.path ?? "none"))")
+        }
     }
 
     static func throughput(clip: URL, plan: PlanFile, start: Double, frames: Int, settings: WarpSettings) -> (Int, Double, Double) {
@@ -251,6 +402,7 @@ enum SelfTest {
                 let state = PreviewState()
                 state.plan = plan
                 state.settings = settings
+                state.track = info.track
                 let comp = info.makeComposition(state: state, renderSize: CGSize(width: plan.outW, height: plan.outH))
                 let reader = try AVAssetReader(asset: asset)
                 let fd = info.frameDuration.seconds
@@ -274,6 +426,11 @@ enum SelfTest {
                 guard let (pb, t) = best, abs(t - time) < 1e-3 else { return }
                 if let save, let cg = try? StillRenderer.cgImage(pb, maxWidth: 1920) { writePNG(cg, save) }
                 result = planes(pb)
+                if let save, let d = ProcessInfo.processInfo.environment["SP_DUMP_DIR"], let r = result {   // debugging aid
+                    let base = URL(fileURLWithPath: d).appendingPathComponent(save.deletingPathExtension().lastPathComponent)
+                    try? r.y.withUnsafeBytes { Data($0) }.write(to: URL(fileURLWithPath: base.path + "_y.u16"))
+                    try? r.uv.withUnsafeBytes { Data($0) }.write(to: URL(fileURLWithPath: base.path + "_uv.u16"))
+                }
             } catch {
                 log("compositor: \(error)")
             }

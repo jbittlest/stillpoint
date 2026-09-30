@@ -2,9 +2,32 @@
 
     python -m stillpoint.app_bridge probe   CLIP [--telemetry auto|quick|full]
     python -m stillpoint.app_bridge analyze CLIP --out DIR [--smoothness S] [--fov DEG | --crop-area A]
-                                            [--horizon-lock] [--loop-iters N]
+                                            [--horizon-lock [S]] [--roll-limit DEG] [--loop-iters N]
+                                            [--fill | --no-fill] [--fill-overscan F] [--mesh | --no-mesh]
+                                            [--synth-blur off|auto|angle] [--blur-smooth W] [--timecal | --no-timecal]
+                                            [--dry-run] [--start-frame N --max-frames M]
     python -m stillpoint.app_bridge render  CLIP --plan PLAN --out OUT.mov|mp4 [--codec hevc10|hevc10-speed|prores]
                                             [--bitrate-mbps 180] [--start-frame N] [--frames M] [--kernel lanczos3]
+                                            [--blur SIDECAR | --no-blur]
+Engine v5 analysis options (AnalyzeParams). An option that is not given takes its DEFAULT: option_defaults(camera),
+i.e. AnalyzeParams' own default, overridden per camera by CAMERA_OPTION_DEFAULTS below -- the one place to change what
+a clip starts with (probe reports the resolved defaults per camera in result['options'], and the app starts every clip
+from them). Today: timing self-calibration on for every camera; full-frame fill on for the DJI O3 (gate v6).
+    --horizon-lock [S]  horizon lock v2, strength S 0..1 (bare flag = 1.0, 0 = off); --roll-limit DEG keeps bank up
+                        to DEG (0 = fully level)
+    --fill / --no-fill  full-frame border fill (neighbouring frames; overscan --fill-overscan, default 0.06)
+    --mesh / --no-mesh  parallax mesh residual ("Max quality": two extra tracking passes; ~+40 % analysis time on
+                        the O3, ~5-7x on OA4 / O4 Pro)
+    --synth-blur MODE   synthetic shutter sidecar plan.spblur ('auto' | 'angle'); render uses it automatically
+    --blur-smooth W     blur-aware smoothing weight
+    --timecal / --no-timecal  per-clip timing self-calibration (--no-timecal keeps the metadata timing)
+    --dry-run           resolve + check the options and return them (result['params'] = the manifest params,
+                        result['analyze_params'] = the AnalyzeParams fields) without analysing or writing anything
+    --start-frame N --max-frames M   (diagnostics / self-tests) analyse only that window of the clip; the plan's
+                        records carry the source PTS, so it renders and previews like a whole-clip plan
+  fill, mesh and synth-blur cannot be combined yet (bad_args; probe's options.exclusive lists the pairs the engine's
+  pipeline.check_params refuses).
+  Env STILLPOINT_ANALYSIS_WORKERS=N caps the measurement worker pool (AnalyzeParams.processes / max_workers_measure).
     python -m stillpoint.app_bridge summary DIR [--recompute]
     python -m stillpoint.app_bridge adopt   CLI_ANALYSIS_DIR --clip CLIP --out DIR
 
@@ -35,7 +58,10 @@ analyze writes into that private work dir and moves plan.spplan / report.json / 
 the analysis finished, then writes --out/stillpoint_app.json (the cache manifest: clip identity, parameters and the
 jitter summary shown in the app). A cancelled or failed run never leaves a half-written plan behind.
 The summary carries report.json['quality'] (the engine's independent original-vs-stabilized measurement) normalized
-to summary['quality'] = {method, units, metrics: [{key, label, original, stabilized}], windows?} when present.
+to summary['quality'] = {method, units, metrics: [{key, label, original, stabilized}], windows?} when present, and
+the engine v5 facts: summary['timecal'] (what the timing self-calibration did: state applied | confirmed | kept |
+skipped | failed | off, the offset it found and its sigma), summary['fill'], summary['mesh'], summary['horizon']
+(only for analyses that used them).
 
 render reads sprender's `PROGRESS frame=i total=n` lines (no file-size guessing) and refuses to start when the
 output volume cannot hold the expected file plus 1 GB.
@@ -64,6 +90,7 @@ MANIFEST = 'stillpoint_app.json'
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 SPRENDER = os.path.join(ROOT, 'app', 'renderer', '.build', 'sprender')
 WORK_ENV = 'STILLPOINT_WORK_DIR'
+WORKERS_ENV = 'STILLPOINT_ANALYSIS_WORKERS'  # optional cap on the measurement worker pool
 GB = 1e9
 MIN_FREE_BYTES = 3 * GB          # analyze refuses to start below this; the frame cache must leave this much free
 RENDER_MARGIN_BYTES = 1 * GB     # render: free space beyond the expected output size
@@ -557,6 +584,11 @@ def cmd_probe(a) -> dict:
     else:
         out.update(camera=_camera_from_tags(info), imu_rate=0.0, has_highrate=False, eis_baked=False,
                    warnings=[], horizon_lock_supported=False, fov=None)
+    try:
+        out['options'] = option_info(tel.camera if tel is not None else None, bool(out['horizon_lock_supported']))
+    except Exception as e:                       # an engine without the v5 options: the app hides them
+        out['options'] = None
+        emit(dict(type='log', message=f'options unavailable: {type(e).__name__}: {e}'))
     fc = _engine_frame_cache()
     temp, need = engine_scratch_need()
     fcb = frame_cache_bytes(n, W, H, fc[1]) if (fc and fc[0] and n) else 0
@@ -575,6 +607,176 @@ def _engine_has_horizon_lock() -> bool:
         return 'horizon_lock' in {f.name for f in __import__('dataclasses').fields(SmoothParams)}
     except Exception:
         return False
+
+
+# ============================================================================================ engine v5 options
+#
+# The analysis options Stillpoint.app shows, their defaults per camera, what the engine supports and which of them
+# cannot be combined. The app never hard-codes any of this: it starts every clip from probe's result['options'].
+#
+#   option (protocol name)  AnalyzeParams field(s)            app control
+#   horizon                 horizon_lock (strength, 0 = off)  'Horizon lock' switch + Strength slider
+#                           roll_limit_deg                    'Bank limit' slider (0-45 deg, 0 = fully level)
+#   fill                    fill, fill_overscan               'Full-frame fill' switch
+#   mesh                    mesh_residual                     'Max quality' switch
+#   timecal                 timecal                           readout only ('Timing auto-calibration')
+#   blur                    synth_blur                        (not in the app)
+
+# Per-camera overrides of AnalyzeParams' defaults: {substring of Telemetry.camera: {option: value}} with option in
+# horizon_lock (strength 0..1), roll_limit_deg, fill (bool), fill_overscan, mesh (bool), timecal (bool).
+# THIS is the one place to change the defaults a camera's clips start with in the app (and in `app_bridge analyze`
+# without flags); cameras / options not listed keep AnalyzeParams' own defaults, so the CLI agrees unless listed.
+# The stillpoint CLI (`stillpoint.cli analyze`) resolves its defaults through the same helper (resolve_for_video);
+# AnalyzeParams' own defaults (what scripts / the gate scoreboard construct directly) stay camera-independent.
+# Only options the ProRes decision gate shows as a real win with no meaningful regression go here
+# (work/gate/v6/decision.md, 2026-09-30):
+#   DJI O3: full-frame fill -- HF -14.5 % [-24, -4], 2-8 Hz -15.7 %, roll -7.9 %, jumps >1 px 13 -> 8, nothing worse,
+#           +0-3 % analysis time. OA4 / O4 Pro: fill does not pass (O4 Pro calm +11.7 %), so no entry.
+#   Mesh ('Max quality') is not a default on any camera (O3: no decisive HF edge over fill, more >1 px jumps, slower).
+CAMERA_OPTION_DEFAULTS: dict[str, dict] = {
+    'DJI O3': {'fill': True, 'fill_overscan': 0.06},
+}
+
+# Caveats the app shows next to an option for a camera (engine knowledge, one short sentence).
+CAMERA_OPTION_NOTES: dict[str, dict[str, str]] = {
+    'O4 Pro': {'horizon': "Not reliable on O4 Pro yet: its gravity estimate is 6–10° off in turns."},
+}
+
+HORIZON_STRENGTH_ON = 1.0        # strength of a bare --horizon-lock (the switch without touching the slider)
+FILL_OVERSCAN_ON = 0.06          # fill_overscan with --fill when not given (the 2026-09-29 scoreboard setting)
+ROLL_LIMIT_RANGE = (0.0, 45.0)   # 'Bank limit' slider, degrees
+# analysis time relative to the same run without the option (pre-flight estimates): mesh = two extra tracking passes
+# (+41 % on DJI_0027, +138 s on DJI_0034 under load, 2026-09-30); fill = selection + alignment (+2.5-25 s per clip)
+OPTION_TIME_FACTORS = {'mesh': 1.4, 'fill': 1.05}
+# ... per camera (substring of Telemetry.camera). The mesh stage adds ~26-34 ms per frame whatever the camera, so the
+# factor depends on how heavy the default analysis is: O3 (closed loop) x1.3-1.5, OA4 / O4 Pro (light) x5-7
+# (gate v6: OA4_0012 962 s vs 145 s clean; O4_0004 673 s vs 95 s under load; OA4 fill 185 s vs 145 s).
+CAMERA_TIME_FACTORS: dict[str, dict[str, float]] = {
+    'Osmo Action 4': {'mesh': 6.6, 'fill': 1.25},
+    'O4 Pro': {'mesh': 6.5, 'fill': 1.1},
+}
+_EXCLUSIVE_CANDIDATES = (('fill', 'fill', True), ('mesh', 'mesh_residual', True), ('blur', 'synth_blur', 'auto'))
+
+
+def _camera_match(camera: Optional[str], table: dict) -> dict:
+    """Merge the entries of `table` whose key is a substring of `camera` (in table order)."""
+    out: dict = {}
+    for key, vals in table.items():
+        if camera and key and key in camera:
+            out.update(vals)
+    return out
+
+
+def option_defaults(camera: Optional[str] = None) -> dict:
+    """Resolved defaults of the app's options for a camera: AnalyzeParams' defaults + CAMERA_OPTION_DEFAULTS.
+    horizon_lock is the strength (0 = off); horizon_strength is the strength the switch turns on with."""
+    from .pipeline import AnalyzeParams
+    p = AnalyzeParams()
+    d = dict(horizon_lock=float(getattr(p, 'horizon_lock', 0.0) or 0.0),
+             roll_limit_deg=float(getattr(p, 'roll_limit_deg', 0.0) or 0.0),
+             fill=bool(getattr(p, 'fill', False)),
+             fill_overscan=float(getattr(p, 'fill_overscan', 0.0) or 0.0) or FILL_OVERSCAN_ON,
+             mesh=bool(getattr(p, 'mesh_residual', False)),
+             timecal=bool(getattr(p, 'timecal', False)),
+             synth_blur=str(getattr(p, 'synth_blur', 'off') or 'off'))
+    d.update(_camera_match(camera, CAMERA_OPTION_DEFAULTS))
+    d['horizon_lock'] = float(min(max(float(d['horizon_lock'] or 0.0), 0.0), 1.0))
+    d['horizon_strength'] = d['horizon_lock'] if d['horizon_lock'] > 0 else HORIZON_STRENGTH_ON
+    return d
+
+
+def option_support() -> dict:
+    """Which options this engine has (feature-detected on AnalyzeParams / SmoothParams)."""
+    from .pipeline import AnalyzeParams
+    p = AnalyzeParams()
+    return dict(horizon=bool(_engine_has_horizon_lock() and hasattr(p, 'roll_limit_deg')), fill=hasattr(p, 'fill'),
+                mesh=hasattr(p, 'mesh_residual'), timecal=hasattr(p, 'timecal'), blur=hasattr(p, 'synth_blur'))
+
+
+def exclusive_pairs() -> list[list[str]]:
+    """Option pairs the engine refuses to combine, found by asking pipeline.check_params itself (so the app follows
+    the engine when the restriction is lifted)."""
+    from . import pipeline
+    check = getattr(pipeline, 'check_params', None)
+    if check is None:
+        return []
+    cands = [(n, f, v) for n, f, v in _EXCLUSIVE_CANDIDATES if hasattr(pipeline.AnalyzeParams(), f)]
+    out = []
+    for i in range(len(cands)):
+        for j in range(i + 1, len(cands)):
+            prm = pipeline.AnalyzeParams()
+            setattr(prm, cands[i][1], cands[i][2])
+            setattr(prm, cands[j][1], cands[j][2])
+            try:
+                check(prm)
+            except ValueError:
+                out.append([cands[i][0], cands[j][0]])
+    return out
+
+
+def option_info(camera: Optional[str], gravity: bool) -> dict:
+    """probe's result['options']: defaults for this camera, support, exclusive pairs, per-camera notes, the slider
+    ranges and the analysis-time factors. Dict keys that are option names are single words (the app decodes with
+    a snake_case -> camelCase strategy that also rewrites dictionary keys)."""
+    sup = option_support()
+    sup['horizon'] = bool(sup['horizon'] and gravity)
+    return dict(defaults=option_defaults(camera), supported=sup, exclusive=exclusive_pairs(),
+                notes=_camera_match(camera, CAMERA_OPTION_NOTES),
+                ranges=dict(horizon_strength=[0.1, 1.0], roll_limit_deg=list(ROLL_LIMIT_RANGE)),
+                time_factor=time_factors(camera))
+
+
+def time_factors(camera: Optional[str] = None) -> dict:
+    """Analysis-time factors of the options for a camera (OPTION_TIME_FACTORS + CAMERA_TIME_FACTORS)."""
+    return dict(OPTION_TIME_FACTORS, **_camera_match(camera, CAMERA_TIME_FACTORS))
+
+
+def _camera_for(video: str) -> Optional[str]:
+    """Camera name for option defaults (cached gyro parse, else telemetry's quick look). Only needed when
+    CAMERA_OPTION_DEFAULTS has entries."""
+    try:
+        from . import telemetry as _tel
+        cache = tel_cache_dir(video)
+        if os.path.exists(_tel.cache_file(video, cache)):
+            return _tel.load_telemetry(video, cache_dir=cache).camera
+        return _tel.probe_telemetry(video).camera
+    except Exception:
+        return None
+
+
+def resolve_options(a, camera: Optional[str]) -> dict:
+    """The analyze options from the command line, with every option that was not given taken from
+    option_defaults(camera). Tolerates namespaces without the v5 fields (older callers / tests)."""
+    d = option_defaults(camera)
+    opt = lambda k: getattr(a, k, None)                          # noqa: E731
+    hl = opt('horizon_lock')
+    strength = d['horizon_lock'] if hl is None else float(hl or 0.0)     # False / 0 -> off
+    fill = d['fill'] if opt('fill') is None else bool(opt('fill'))
+    # fill / mesh / synth-blur are exclusive: an option the caller asked for explicitly wins over a fill that is
+    # only on because it is this camera's default (e.g. `--mesh` on an O3 clip).
+    explicit_exclusive = bool(opt('mesh')) or (opt('synth_blur') not in (None, '', 'off'))
+    if opt('fill') is None and explicit_exclusive:
+        fill = False
+    no_tc = opt('no_timecal')                                     # legacy namespaces
+    timecal = d['timecal'] if opt('timecal') is None else bool(opt('timecal'))
+    if no_tc:
+        timecal = False
+    return dict(horizon_lock=strength,
+                roll_limit_deg=d['roll_limit_deg'] if opt('roll_limit') is None else float(opt('roll_limit') or 0.0),
+                fill=fill,
+                fill_overscan=(float(opt('fill_overscan')) if opt('fill_overscan') is not None
+                               else (d['fill_overscan'] if fill else 0.0)),
+                mesh=d['mesh'] if opt('mesh') is None else bool(opt('mesh')),
+                synth_blur=opt('synth_blur') or d['synth_blur'],
+                blur_smooth=float(opt('blur_smooth') or 0.0),
+                timecal=timecal)
+
+
+def resolve_for_video(a, video: str) -> tuple[Optional[str], dict]:
+    """(camera, resolve_options(a, camera)) for a clip: the one per-camera resolution used by `app_bridge analyze`
+    and `stillpoint.cli analyze` (the camera is only looked up when CAMERA_OPTION_DEFAULTS has entries)."""
+    camera = _camera_for(video) if CAMERA_OPTION_DEFAULTS else None
+    return camera, resolve_options(a, camera)
 
 
 # ============================================================================================ analyze
@@ -625,6 +827,7 @@ _NATIVE_STAGES = {
     'decode': ('telemetry', 'Decoding frames'), 'crop': ('path', 'Choosing the crop'),
     'path': ('path', 'Smoothing the path'), 'fold': ('path', 'Refining the path'), 'final': ('path', 'Final path'),
     'measure': ('measure', 'Measuring jitter'), 'quality': ('quality', 'Checking the result'),
+    'fill': ('measure', 'Planning the border fill'), 'mesh': ('measure', 'Measuring micro-jitter'),
     'write': ('finalize', 'Writing plan'), 'done': ('finalize', 'Writing plan'),
 }
 # user-facing sub-messages (the engine's own messages are for logs)
@@ -633,6 +836,8 @@ _NATIVE_MESSAGES = {
     'decode': 'Decoding analysis frames', 'crop': 'Fitting the crop inside every frame',
     'path': 'Solving the smooth camera path', 'fold': 'Folding measured jitter back into the path',
     'final': 'Solving the final path', 'quality': 'Measuring original vs stabilized, independently of the loop',
+    'fill': 'Choosing neighbouring frames for the corners (Full-frame fill)',
+    'mesh': 'Tracking the picture for the micro-jitter mesh (Max quality)',
     'write': 'Writing the plan', 'done': 'Writing the plan',
 }
 
@@ -656,7 +861,7 @@ class _NativeProgress:
     def __call__(self, *args, **kwargs):
         stage, frac, msg = _normalize_native(args, kwargs)
         key, label = map_native_stage(stage)
-        if key == 'measure':
+        if (stage or '').lower().startswith('measure'):
             msg = self.pass_message(stage or '', msg or '')
         else:
             st = (stage or '').lower()
@@ -775,21 +980,11 @@ def cmd_analyze(a) -> dict:
     if not os.path.isfile(video):
         raise BridgeError('not_found', f'No such file: {video}')
     out_dir = os.path.abspath(os.path.expanduser(a.out))
-    os.makedirs(out_dir, exist_ok=True)
-    swept = sweep_stale_tmp()
-    if swept:
-        emit(dict(type='log', message=f'removed stale scratch dirs: {", ".join(swept)}'))
+    dry = bool(getattr(a, 'dry_run', False))
 
     from . import video as _video
     info = _video.probe(video)
     n_frames = int(info['n_frames'])
-    try:                                   # cache presence only changes the time estimate
-        from .telemetry import cache_file
-        cached = os.path.exists(cache_file(video, tel_cache_dir(video)))
-    except Exception:
-        cached = False
-    prog = Progress(_stage_plan(n_frames, a.loop_iters, cached))
-    prog.start('telemetry', 'Reading the gyro track')
 
     prm = AnalyzeParams(smoothness=float(a.smoothness), closed_loop_iters=int(a.loop_iters), verbose=True,
                         save_iter_plans=False)
@@ -805,10 +1000,73 @@ def cmd_analyze(a) -> dict:
     else:
         prm.out_fx = _fx_for_fov(W, 100.0)
         fov_used = 100.0
-    if a.horizon_lock:
+    # options not given on the command line take this camera's defaults (option_defaults)
+    _cam, v5 = resolve_for_video(a, video)
+    if not 0.0 <= v5['horizon_lock'] <= 1.0:
+        raise BridgeError('bad_args', f'--horizon-lock {v5["horizon_lock"]}: the strength is 0..1')
+    if not ROLL_LIMIT_RANGE[0] <= v5['roll_limit_deg'] <= 90.0:
+        raise BridgeError('bad_args', f'--roll-limit {v5["roll_limit_deg"]}: expected 0..90 degrees')
+    if v5['horizon_lock'] > 0:
         if not _engine_has_horizon_lock():
             raise BridgeError('unsupported', 'This engine has no horizon lock.')
-        prm.smooth_overrides = dict(prm.smooth_overrides or {}, horizon_lock=True)
+        if hasattr(prm, 'roll_limit_deg'):            # engine v5: horizon lock v2 strength
+            prm.horizon_lock = v5['horizon_lock']
+            prm.roll_limit_deg = v5['roll_limit_deg']
+        else:
+            prm.smooth_overrides = dict(prm.smooth_overrides or {}, horizon_lock=True)
+    fields = dict(fill=v5['fill'], fill_overscan=v5['fill_overscan'], mesh_residual=v5['mesh'],
+                  synth_blur=v5['synth_blur'], blur_smooth_w=v5['blur_smooth'], timecal=v5['timecal'])
+    for k, v in fields.items():
+        if hasattr(prm, k):
+            setattr(prm, k, v)
+        elif v not in (False, 0.0, 'off') and not (k == 'timecal' and v):
+            raise BridgeError('unsupported', f'This engine has no {k} option.')
+    if hasattr(pipeline, 'check_params'):
+        try:
+            pipeline.check_params(prm)
+        except ValueError as e:
+            raise BridgeError('bad_args', str(e))
+    sf, mf = int(getattr(a, 'start_frame', 0) or 0), int(getattr(a, 'max_frames', 0) or 0)
+    if sf or mf:                                      # a window of the clip (diagnostics, self-tests)
+        if sf < 0 or mf < 0 or sf >= n_frames or not hasattr(prm, 'start_frame'):
+            raise BridgeError('bad_args', f'--start-frame {sf} --max-frames {mf}: not a window of this clip')
+        prm.start_frame, prm.max_frames = sf, mf
+    workers = os.environ.get(WORKERS_ENV, '').strip()
+    if workers:                                       # machine rule / tests: cap the measurement pool
+        try:
+            nw = max(1, int(workers))
+        except ValueError:
+            raise BridgeError('bad_args', f'{WORKERS_ENV}={workers!r} is not a worker count')
+        if hasattr(prm, 'processes'):
+            prm.processes = nw
+        if hasattr(prm, 'max_workers_measure'):
+            prm.max_workers_measure = min(int(prm.max_workers_measure or nw), nw)
+    params = dict(smoothness=float(a.smoothness), fov_deg=fov_used,
+                  crop_area=None if a.crop_area is None or fov_used is not None else float(a.crop_area),
+                  horizon_lock=v5['horizon_lock'] > 0, loop_iters=int(a.loop_iters),
+                  horizon_strength=v5['horizon_lock'], roll_limit_deg=v5['roll_limit_deg'],
+                  fill=v5['fill'], fill_overscan=v5['fill_overscan'], mesh=v5['mesh'],
+                  synth_blur=v5['synth_blur'], blur_smooth=v5['blur_smooth'], timecal=v5['timecal'])
+    if sf or mf:
+        params['window'] = [sf, mf]
+    if dry:
+        keys = ('smoothness', 'out_fx', 'crop_area', 'closed_loop_iters', 'horizon_lock', 'roll_limit_deg', 'fill',
+                'fill_overscan', 'mesh_residual', 'synth_blur', 'blur_smooth_w', 'timecal', 'processes',
+                'max_workers_measure', 'start_frame', 'max_frames')
+        return dict(dry_run=True, params=params, analyze_params={k: getattr(prm, k) for k in keys if hasattr(prm, k)},
+                    smooth_overrides=dict(prm.smooth_overrides or {}))
+
+    os.makedirs(out_dir, exist_ok=True)
+    swept = sweep_stale_tmp()
+    if swept:
+        emit(dict(type='log', message=f'removed stale scratch dirs: {", ".join(swept)}'))
+    try:                                   # cache presence only changes the time estimate
+        from .telemetry import cache_file
+        cached = os.path.exists(cache_file(video, tel_cache_dir(video)))
+    except Exception:
+        cached = False
+    prog = Progress(_stage_plan(n_frames, a.loop_iters, cached))
+    prog.start('telemetry', 'Reading the gyro track')
 
     work = tmp_dir_for(out_dir)
     shutil.rmtree(work, ignore_errors=True)
@@ -863,19 +1121,18 @@ def cmd_analyze(a) -> dict:
         prog.start('finalize', 'Summarizing jitter')
         summary = summarize(video, work, report)
         # publish atomically-ish: data files first, the manifest (what the app trusts) last
-        for fn in ('plan.spplan', 'report.json', 'analysis.npz'):
+        for fn in ('plan.spplan', 'plan.spblur', 'report.json', 'analysis.npz'):
             src = os.path.join(work, fn)
             if os.path.exists(src):
                 _move(src, os.path.join(out_dir, fn))
+            elif fn == 'plan.spblur':
+                _rm(os.path.join(out_dir, fn))        # a stale sidecar of an earlier analysis must not be used
         report_path = os.path.join(out_dir, 'report.json')
         rep = json.load(open(report_path))
         rep['plan'] = os.path.join(out_dir, 'plan.spplan')
         _write_json(report_path, rep)
         wall = time.perf_counter() - t0
-        manifest = dict(protocol=PROTOCOL, kind='stillpoint-analysis', clip=_clip_identity(video),
-                        params=dict(smoothness=float(a.smoothness), fov_deg=fov_used,
-                                    crop_area=None if a.crop_area is None or fov_used is not None else float(a.crop_area),
-                                    horizon_lock=bool(a.horizon_lock), loop_iters=int(a.loop_iters)),
+        manifest = dict(protocol=PROTOCOL, kind='stillpoint-analysis', clip=_clip_identity(video), params=params,
                         created=time.strftime('%Y-%m-%dT%H:%M:%S%z'), seconds=wall,
                         plan=os.path.join(out_dir, 'plan.spplan'), report=report_path,
                         timing=dict(wall_s=wall, engine_total_s=(rep.get('timings') or {}).get('total_s'),
@@ -990,6 +1247,11 @@ def summarize(video: str, analysis_dir: str, report: Optional[dict] = None) -> d
             s['win_final_px'] = z['window_hf_best'].tolist()
     # the closed loop grades itself (vision residual on its own output): label it so, never as the result
     s['final_method'] = 'closed-loop residual (self-measured)'
+    for k, fn in (('timecal', timecal_summary), ('fill', fill_summary), ('mesh', mesh_summary),
+                  ('horizon', horizon_summary)):
+        v = fn(report)
+        if v is not None:
+            s[k] = v
     rq = report.get('quality')
     q = normalize_quality(rq)
     if q is not None:
@@ -999,6 +1261,103 @@ def summarize(video: str, analysis_dir: str, report: Optional[dict] = None) -> d
             s['quality_error'] = str(rq['error'])[:300]
         s['quality_unparsed_keys'] = sorted(rq.keys())[:40]
     return _clean(s)
+
+
+def _fnum(v) -> Optional[float]:
+    """A finite (signed) number, else None."""
+    if isinstance(v, bool) or not isinstance(v, (int, float, np.integer, np.floating)):
+        return None
+    v = float(v)
+    return v if math.isfinite(v) else None
+
+
+TIMECAL_CONFIRM_MS = 0.05        # an estimate within max(2 sigma, this) of the metadata timing "confirms" it
+
+
+def timecal_summary(report: dict) -> Optional[dict]:
+    """What the per-clip timing self-calibration did (report['calibration']['timecal']) for the app's readout:
+      state  applied    a correction was applied (offset_ms; readout_pct / focal_pct / exposure_slope / box_pct if so)
+             confirmed  the fit ran and its offset agrees with the metadata timing (|estimate| <= max(2 sigma, 0.05 ms))
+             kept       the fit ran but was not confident / not confirmed, so the metadata timing was kept
+             skipped    not run for this clip (no high-rate gyro, in-camera EIS, ...)
+             failed     the calibration raised; the metadata timing was kept
+             off        turned off for this analysis (--no-timecal)
+    plus estimate_ms / sigma_ms (the fitted offset, also when it was not applied) and detail (the engine's reasons).
+    None for analyses made before engine v5."""
+    prm = report.get('params') or {}
+    cal = report.get('calibration') or {}
+    tc = cal.get('timecal')
+    if not isinstance(tc, dict):
+        if 'timecal' not in prm:
+            return None
+        if not prm.get('timecal'):
+            return dict(state='off', detail='Turned off for this analysis: the metadata timing was used.')
+        if prm.get('calibrate'):
+            return dict(state='skipped', detail='The legacy calibration ran instead.')
+        return dict(state='skipped', detail='Needs the high-rate gyro track; this clip only has per-frame attitude.')
+    status = str(tc.get('status') or '')
+    est, sig = tc.get('estimate') or {}, tc.get('sigma') or {}
+    reasons = [str(r) for r in ((tc.get('decision') or {}).get('reasons') or [])]
+    out = dict(estimate_ms=_fnum(est.get('offset_ms')), sigma_ms=_fnum(sig.get('offset_ms')),
+               detail=('; '.join(reasons)[:400] or None))
+    if status.startswith('skipped'):
+        return dict(out, state='skipped', detail=status.partition(':')[2].strip() or status)
+    if status.startswith('failed'):
+        return dict(out, state='failed', detail=status[:300])
+    if status != 'ok':
+        return dict(out, state='kept', detail=status[:300] or out['detail'])
+    app = tc.get('applied') or {}
+    done = {}
+    off = _fnum(app.get('offset_ms')) or 0.0
+    if off != 0.0:
+        done['offset_ms'] = off
+    meta = _fnum(cal.get('readout_meta_ms'))
+    if _fnum(app.get('readout_s')) and meta:
+        done['readout_pct'] = (float(app['readout_s']) * 1e3 / meta - 1.0) * 100.0
+    if (_fnum(app.get('focal_scale')) or 1.0) != 1.0:
+        done['focal_pct'] = (float(app['focal_scale']) - 1.0) * 100.0
+    if _fnum(app.get('exposure_slope')):
+        done['exposure_slope'] = float(app['exposure_slope'])
+    if (_fnum(app.get('exposure_scale')) or 1.0) != 1.0:
+        done['box_pct'] = (float(app['exposure_scale']) - 1.0) * 100.0
+    if done:
+        return dict(out, state='applied', offset_ms=off, **{k: v for k, v in done.items() if k != 'offset_ms'})
+    e, s = out['estimate_ms'], out['sigma_ms']
+    ok = e is not None and abs(e) <= max(2.0 * (s or 0.0), TIMECAL_CONFIRM_MS)
+    return dict(out, state='confirmed' if ok else 'kept')
+
+
+def fill_summary(report: dict) -> Optional[dict]:
+    """report['fill'] (full-frame border fill) -> how much of the output it synthesised; None when fill was off."""
+    f = report.get('fill')
+    if not isinstance(f, dict):
+        return None
+    if f.get('error'):
+        return dict(error=str(f['error'])[:300])
+    return _clean(dict(frames_frac=_num(f.get('frac_frames_filled')), pixels_frac_mean=_num(f.get('fill_frac_mean')),
+                       pixels_frac_max=_num(f.get('fill_frac_max')), uncovered_frac_max=_num(f.get('uncovered_frac_max')),
+                       max_offset=_num(f.get('max_offset'))))
+
+
+def mesh_summary(report: dict) -> Optional[dict]:
+    """report['mesh'] (mesh residual, 'Max quality') -> the size of the correction it baked in (1080p px)."""
+    m = report.get('mesh')
+    if not isinstance(m, dict):
+        return None
+    if m.get('error'):
+        return dict(error=str(m['error'])[:300])
+    return _clean(dict(offset_rms_px=_num(m.get('offset_rms_1080')), offset_max_px=_num(m.get('offset_max_1080')),
+                       accepted_frac=_num((m.get('verify') or {}).get('accepted_frac'))))
+
+
+def horizon_summary(report: dict) -> Optional[dict]:
+    """report['smooth']['horizon'] (horizon lock v2) -> how much of the clip it levelled; None when it was off."""
+    h = (report.get('smooth') or {}).get('horizon')
+    if not isinstance(h, dict) or not (_num(h.get('strength')) or 0.0) > 0:
+        return None
+    return _clean(dict(strength=_num(h.get('strength')), roll_limit_deg=_num(h.get('roll_limit_deg')),
+                       full_level_frac=_num(h.get('frac_full_level')), off_frac=_num(h.get('frac_off')),
+                       available_frac=_num(h.get('frac_available'))))
 
 
 # report.json['quality'] (the engine's independent measurement) -> summary['quality'], tolerant of layout:
@@ -1124,10 +1483,16 @@ def cmd_adopt(a) -> dict:
     _write_json(os.path.join(out_dir, 'report.json'), rep)
     summary = summarize(video, out_dir, rep)
     prm = rep.get('params', {})
+    hl = float(prm.get('horizon_lock') or 0.0)
+    if not hl and (prm.get('smooth_overrides') or {}).get('horizon_lock'):
+        hl = HORIZON_STRENGTH_ON                                  # pre-v5 boolean horizon lock
     params = dict(smoothness=float(prm.get('smoothness', 1.0)),
                   fov_deg=round(float(rep.get('out', {}).get('hfov_deg', 100.0)), 1), crop_area=None,
-                  horizon_lock=bool((prm.get('smooth_overrides') or {}).get('horizon_lock', False)),
-                  loop_iters=int(prm.get('closed_loop_iters', 2)))
+                  horizon_lock=hl > 0, loop_iters=int(prm.get('closed_loop_iters', 2)),
+                  horizon_strength=hl, roll_limit_deg=float(prm.get('roll_limit_deg') or 0.0),
+                  fill=bool(prm.get('fill', False)), fill_overscan=float(prm.get('fill_overscan') or 0.0),
+                  mesh=bool(prm.get('mesh_residual', False)), synth_blur=str(prm.get('synth_blur') or 'off'),
+                  blur_smooth=float(prm.get('blur_smooth_w') or 0.0), timecal=bool(prm.get('timecal', False)))
     manifest = dict(protocol=PROTOCOL, kind='stillpoint-analysis', clip=_clip_identity(video), params=params,
                     created=time.strftime('%Y-%m-%dT%H:%M:%S%z'), seconds=float(rep.get('timings', {}).get('total_s', 0)),
                     plan=rep['plan'], report=os.path.join(out_dir, 'report.json'), adopted_from=src,
@@ -1187,6 +1552,12 @@ def cmd_render(a) -> dict:
     part = os.path.join(os.path.dirname(out), '.' + os.path.basename(out) + '.partial' + ext)
     cmd = [exe, video, plan, part, '--start-frame', str(start), '--codec', a.codec,
            '--bitrate-mbps', str(a.bitrate_mbps), '--kernel', a.kernel, '--zero-base']
+    a_blur = getattr(a, 'blur', None)
+    blur = a_blur or (None if getattr(a, 'no_blur', False) else os.path.join(os.path.dirname(plan), 'plan.spblur'))
+    if blur and os.path.exists(blur):                 # synthetic shutter sidecar (analyze --synth-blur)
+        cmd += ['--blur', blur]
+    elif a_blur:
+        raise BridgeError('not_found', f'Missing synthetic-shutter sidecar: {a_blur}')
     if a.frames:
         cmd += ['--frames', str(int(a.frames))]
     expected = _expected_bytes(a.codec, a.bitrate_mbps, pl.out_w, pl.out_h, float(info['fps']), n)
@@ -1285,8 +1656,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--smoothness', type=float, default=1.0)
     p.add_argument('--fov', type=float, default=None, help='output horizontal field of view, degrees')
     p.add_argument('--crop-area', type=float, default=None, help='analytic crop area (instead of --fov)')
-    p.add_argument('--horizon-lock', action='store_true')
+    p.add_argument('--horizon-lock', type=float, nargs='?', const=HORIZON_STRENGTH_ON, default=None, metavar='S',
+                   help='horizon lock strength 0..1 (the bare flag = 1.0, 0 = off; default: the camera default)')
+    p.add_argument('--roll-limit', type=float, default=None, metavar='DEG',
+                   help='with --horizon-lock: bank up to DEG degrees is kept (0 = fully level)')
     p.add_argument('--loop-iters', type=int, default=2)
+    p.add_argument('--fill', action=argparse.BooleanOptionalAction, default=None,
+                   help='full-frame border fill (engine v5; default: the camera default)')
+    p.add_argument('--fill-overscan', type=float, default=None, metavar='F', help=f'with --fill (default {FILL_OVERSCAN_ON})')
+    p.add_argument('--mesh', action=argparse.BooleanOptionalAction, default=None,
+                   help='parallax mesh residual ("Max quality"; ~+40%% analysis time)')
+    p.add_argument('--synth-blur', choices=('off', 'auto', 'angle'), default=None)
+    p.add_argument('--blur-smooth', type=float, default=0.0, metavar='W')
+    p.add_argument('--timecal', action=argparse.BooleanOptionalAction, default=None,
+                   help='per-clip timing self-calibration (--no-timecal keeps the metadata timing)')
+    p.add_argument('--dry-run', action='store_true', help='resolve and check the options, analyse nothing')
+    p.add_argument('--start-frame', type=int, default=0, help='(diagnostics) first source frame of the window')
+    p.add_argument('--max-frames', type=int, default=0, help='(diagnostics) window length in frames (0 = to the end)')
     p.set_defaults(fn=cmd_analyze)
     p = sub.add_parser('render')
     p.add_argument('clip')
@@ -1298,6 +1684,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--frames', type=int, default=0)
     p.add_argument('--kernel', default='lanczos3')
     p.add_argument('--sprender', default=None)
+    p.add_argument('--blur', default=None, help='synthetic shutter sidecar (default: plan.spblur next to the plan)')
+    p.add_argument('--no-blur', action='store_true', help='ignore a plan.spblur next to the plan')
     p.set_defaults(fn=cmd_render)
     p = sub.add_parser('summary')
     p.add_argument('dir')

@@ -18,12 +18,13 @@ final class PlayerController: ObservableObject {
     @Published var loop = true
     @Published var settings = WarpSettings() {
         didSet {
-            var s = settings
-            if isPlaying { s.kernel = 1 }
-            state.settings = s
+            applySettings()
             if !isPlaying { scheduleRedraw() }
         }
     }
+    /// The loaded plan has a full-frame fill section / a mesh block (engine v5).
+    @Published private(set) var planHasFill = false
+    @Published private(set) var planHasMesh = false
 
     private var item: AVPlayerItem?
     private var info: TrackInfo?
@@ -35,6 +36,12 @@ final class PlayerController: ObservableObject {
     private var loadToken = 0
 
     init() {
+        state.fill.onReady = { [weak self] in
+            MainActor.assumeIsolated {       // fill sources arrived for the paused frame: show it exact
+                guard let self, !self.isPlaying else { return }
+                self.scheduleRedraw()
+            }
+        }
         player.isMuted = false
         player.automaticallyWaitsToMinimizeStalling = false
         player.actionAtItemEnd = .pause
@@ -51,9 +58,10 @@ final class PlayerController: ObservableObject {
         loadToken += 1
         let token = loadToken
         pause()
+        if self.url != url { state.fill.clear(); state.track = nil }
         self.url = url
         state.plan = plan
-        hasPlan = plan != nil
+        notePlan(plan)
         time = 0
         duration = 0
         error = nil
@@ -63,6 +71,7 @@ final class PlayerController: ObservableObject {
                 let info = try await TrackInfo.load(asset)
                 guard token == self.loadToken else { return }
                 self.info = info
+                self.state.track = info.track
                 self.fps = info.fps > 0 ? info.fps : 59.94
                 self.duration = info.duration.seconds
                 let it = AVPlayerItem(asset: asset)
@@ -97,9 +106,23 @@ final class PlayerController: ObservableObject {
         return info.size
     }
 
+    private func notePlan(_ plan: PlanFile?) {
+        hasPlan = plan != nil
+        planHasFill = plan?.hasFill ?? false
+        planHasMesh = plan?.hasMesh ?? false
+    }
+
+    /// What the compositor uses: paused frames = export filter + exact fill (neighbours fetched in the background,
+    /// then redrawn); playing = Catmull-Rom + whatever fill sources are cached (the rest: the kernel's soft edge).
+    private func applySettings() {
+        var s = settings
+        if isPlaying { s.kernel = 1; s.fill = .cachedOnly } else { s.fill = .progressive }
+        state.settings = s
+    }
+
     func setPlan(_ plan: PlanFile?) {
         state.plan = plan
-        hasPlan = plan != nil
+        notePlan(plan)
         guard let info, let item else { return }
         let size = renderSize(for: plan, info)
         renderSize = size
@@ -112,7 +135,9 @@ final class PlayerController: ObservableObject {
         item = nil
         url = nil
         state.plan = nil
-        hasPlan = false
+        state.track = nil
+        state.fill.clear()
+        notePlan(nil)
     }
 
     /// Snapshot mode: show a timeline position without an AVPlayerItem.
@@ -122,7 +147,7 @@ final class PlayerController: ObservableObject {
         self.time = time
         self.fps = fps
         state.plan = plan
-        hasPlan = plan != nil
+        notePlan(plan)
         self.renderSize = renderSize
     }
 
@@ -133,18 +158,16 @@ final class PlayerController: ObservableObject {
     func play() {
         guard item != nil else { return }
         if duration > 0, time >= duration - 0.05 { seek(to: 0) }
-        var s = settings
-        s.kernel = 1                 // Catmull-Rom while playing (cheaper 4x4 taps, same geometry)
-        state.settings = s
-        player.play()
         isPlaying = true
+        applySettings()              // Catmull-Rom while playing (cheaper 4x4 taps, same geometry), cached fill only
+        player.play()
     }
 
     func pause() {
         player.pause()
         let wasPlaying = isPlaying
         isPlaying = false
-        state.settings = settings    // paused frames use the export filter (Lanczos-3): exactly what export writes
+        applySettings()              // paused frames use the export filter (Lanczos-3) and exact fill: what export writes
         if wasPlaying { scheduleRedraw() }
     }
 

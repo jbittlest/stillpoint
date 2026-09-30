@@ -207,6 +207,48 @@ struct FovRange: Codable, Equatable {
     var defaultDeg: Double
 }
 
+/// Engine v5 analysis options as the bridge reports them in probe (app_bridge.option_info): this camera's defaults
+/// (the one place they are set is the engine: AnalyzeParams + app_bridge.CAMERA_OPTION_DEFAULTS), what the engine
+/// supports, the pairs it cannot combine, per-camera caveats, slider ranges and analysis-time factors. The app
+/// hard-codes none of it. Option names: horizon, fill, mesh, timecal, blur.
+struct EngineOptionDefaults: Codable, Equatable {
+    var horizonLock: Double?          // strength 0..1, 0 = off
+    var horizonStrength: Double?      // strength the switch turns on with
+    var rollLimitDeg: Double?
+    var fill: Bool?
+    var fillOverscan: Double?
+    var mesh: Bool?
+    var timecal: Bool?
+}
+
+struct EngineOptionRanges: Codable, Equatable {
+    var horizonStrength: [Double]?
+    var rollLimitDeg: [Double]?
+}
+
+struct EngineOptions: Codable, Equatable {
+    var defaults: EngineOptionDefaults
+    var supported: [String: Bool]?
+    var exclusive: [[String]]?
+    var notes: [String: String]?
+    var ranges: EngineOptionRanges?
+    var timeFactor: [String: Double]?
+
+    func isSupported(_ o: String) -> Bool { supported?[o] ?? false }
+    /// True when the engine refuses to combine these two options.
+    func excludes(_ a: String, _ b: String) -> Bool {
+        (exclusive ?? []).contains { Set($0) == Set([a, b]) }
+    }
+    var rollLimitRange: ClosedRange<Double> {
+        if let r = ranges?.rollLimitDeg, r.count == 2, r[1] > r[0] { return r[0]...r[1] }
+        return 0...45
+    }
+    var strengthRange: ClosedRange<Double> {
+        if let r = ranges?.horizonStrength, r.count == 2, r[1] > r[0] { return r[0]...r[1] }
+        return 0.1...1
+    }
+}
+
 struct ScratchNeed: Codable, Equatable {
     var frameCacheBytes: Int64
     var tempBytes: Int64?
@@ -235,6 +277,7 @@ struct ProbeInfo: Codable, Equatable {
     var warnings: [String]?
     var telemetryError: String?
     var scratch: ScratchNeed?
+    var options: EngineOptions?
 
     /// Full camera name for headers ("DJI O3", "DJI Osmo Action 4", "DJI O4 Pro").
     var cameraName: String {
@@ -269,6 +312,56 @@ struct AnalysisParams: Codable, Equatable {
     var cropArea: Double?
     var horizonLock: Bool
     var loopIters: Int
+    // engine v5 (absent in older manifests: those analyses had none of these)
+    var horizonStrength: Double?
+    var rollLimitDeg: Double?
+    var fill: Bool?
+    var fillOverscan: Double?
+    var mesh: Bool?
+    var synthBlur: String?
+    var timecal: Bool?
+}
+
+/// summary['timecal']: what the per-clip timing self-calibration did (app_bridge.timecal_summary).
+struct TimecalSummary: Codable, Equatable {
+    var state: String                 // applied | confirmed | kept | skipped | failed | off
+    var offsetMs: Double?
+    var estimateMs: Double?
+    var sigmaMs: Double?
+    var readoutPct: Double?
+    var focalPct: Double?
+    var boxPct: Double?
+    var detail: String?
+    enum CodingKeys: String, CodingKey {
+        case state, detail, offsetMs = "offset_ms", estimateMs = "estimate_ms", sigmaMs = "sigma_ms"
+        case readoutPct = "readout_pct", focalPct = "focal_pct", boxPct = "box_pct"
+    }
+}
+
+/// summary['fill'] / ['mesh'] / ['horizon']: what those options did (only for analyses that used them).
+struct FillStats: Codable, Equatable {
+    var framesFrac: Double?
+    var pixelsFracMax: Double?
+    var maxOffset: Double?
+    var error: String?
+    enum CodingKeys: String, CodingKey {
+        case error, framesFrac = "frames_frac", pixelsFracMax = "pixels_frac_max", maxOffset = "max_offset"
+    }
+}
+struct MeshStats: Codable, Equatable {
+    var offsetRmsPx: Double?
+    var offsetMaxPx: Double?
+    var error: String?
+    enum CodingKeys: String, CodingKey { case error, offsetRmsPx = "offset_rms_px", offsetMaxPx = "offset_max_px" }
+}
+struct HorizonStats: Codable, Equatable {
+    var strength: Double?
+    var rollLimitDeg: Double?
+    var fullLevelFrac: Double?
+    var offFrac: Double?
+    enum CodingKeys: String, CodingKey {
+        case strength, rollLimitDeg = "roll_limit_deg", fullLevelFrac = "full_level_frac", offFrac = "off_frac"
+    }
 }
 
 /// report.json['quality'] as normalized by the bridge: the engine's independent original-vs-stabilized measurement.
@@ -328,6 +421,10 @@ struct JitterSummary: Codable, Equatable {
     var finalMethod: String?
     var quality: QualitySummary?
     var qualityError: String?
+    var timecal: TimecalSummary?
+    var fill: FillStats?
+    var mesh: MeshStats?
+    var horizon: HorizonStats?
 
     enum CodingKeys: String, CodingKey {
         case hfovDeg = "hfov_deg", zoomMax = "zoom_max", zoomFrac = "zoom_frac", windowS = "window_s"
@@ -336,6 +433,7 @@ struct JitterSummary: Codable, Equatable {
         case gyroOnlyB830Px = "gyro_only_b8_30_px", trustedFrac = "trusted_frac"
         case winOrigPx = "win_orig_px", winGyroOnlyPx = "win_gyro_only_px", winFinalPx = "win_final_px"
         case finalMethod = "final_method", quality, qualityError = "quality_error"
+        case timecal, fill, mesh, horizon
     }
     /// Original shake on the same per-second windows the stabilised number uses.
     var origPx: Double? { origWindowHfPx ?? origHfPx }

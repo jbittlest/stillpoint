@@ -49,6 +49,12 @@ The headless self-tests look for clips via `STILLPOINT_O3_DIR`, `STILLPOINT_OA4_
 - Playback runs through AVPlayer with a custom `AVVideoCompositing` compositor. The compositor loads `shaders/warp.metal` at runtime and warps every decoded frame with the `.spplan` record for that frame's PTS.
 - While paused, a frame is bit-identical to the export: the self-test measures infinite PSNR against `sprender`.
 - While playing, the compositor uses the kernel's Catmull-Rom filter, which is cheaper. The geometry is the same.
+- Engine v5 plans preview with the export's own kernels:
+  - Mesh residual ("Max quality") plans use `sp_warp_*_mesh` with the plan's per-frame mesh block, paused and playing.
+  - Full-frame fill plans use `sp_warp_*_fill`. The compositor only receives the current frame, so the neighbouring source frames the plan's FILL section names are decoded with AVAssetReader (same decoder, pixel format and PTS matching as sprender) into a small cache (≤ 480 MB).
+    - Paused: the frame renders at once with the cached neighbours, the missing ones are fetched in the background and the frame is redrawn, identical to the export.
+    - Playing: only cached neighbours are used; the rest of the border is the kernel's soft edge extension. The viewer says "FILL · EXACT WHEN PAUSED". It never shows black corners.
+  - Split view = the stabilised frame from those kernels with the "before" half drawn over it.
 - Compare modes (⌘1, ⌘2, ⌘3, or \\):
   - After
   - Split, with a draggable divider
@@ -60,11 +66,18 @@ The headless self-tests look for clips via `STILLPOINT_O3_DIR`, `STILLPOINT_OA4_
 - The timeline strip marks the windows that were measured.
 - Without `quality`, the card is tagged NO INDEPENDENT CHECK. It shows the gyro's original shake, then the loop's numbers labelled "closed-loop residual (self-measured)".
 - The card never shows a derived percentage, a floor such as "<0.05", or any number the engine did not produce.
+- Timing auto-calibration (engine v5 `timecal`): the offset it applied, or "Metadata timing confirmed" with the fitted offset ± sigma, or "kept" / "not run" with the engine's reason (`summary['timecal']`).
+- The options the analysis used, with what they did: horizon lock (strength, bank limit, share of frames fully level), fill (share of frames filled), Max quality (mesh correction size).
 
 **Controls**
 - Smoothness and field of view.
-- Horizon lock. It is enabled, marked Beta, only when the engine's smoother supports it and the clip has gravity data.
-- Re-analyze. When the settings differ from the cached analysis, a "Settings changed" banner appears.
+- Engine v5 options, in one group. What a clip starts with, what is supported, which options cannot be combined, per-camera caveats and slider ranges all come from the engine: `probe` returns `options` (`app_bridge.option_info`). The defaults are `AnalyzeParams`' own, overridden per camera only in `app_bridge.CAMERA_OPTION_DEFAULTS`, the one place to change them (today: full-frame fill on for the DJI O3, from the v6 ProRes gate; Max quality's time estimate is per camera, `CAMERA_TIME_FACTORS`).
+  - Horizon lock (Beta): a switch, a Strength slider and a Bank limit slider (0–45°, 0 = fully level). It needs gravity data in the clip. The engine's per-camera note is shown under it (O4 Pro: "not reliable yet").
+  - Full-frame fill: fills the corners from neighbouring frames, so Stillpoint can keep more of the frame.
+  - Max quality (mesh residual): removes extra micro-jitter; the analysis takes longer (the pre-flight estimate includes the engine's time factor).
+  - Options the engine cannot combine (today fill and Max quality) disable each other with a hint; the app never sends both.
+  - Every option the panel shows is sent to `app_bridge analyze` explicitly (`--horizon-lock S --roll-limit D --fill|--no-fill --mesh|--no-mesh`); the timing self-calibration keeps the engine default.
+- Re-analyze. When any setting differs from the cached analysis, a "Settings changed" banner names what changed.
 
 **Export (⌘E, ⇧⌘E for all)**
 - Formats:
@@ -78,7 +91,7 @@ The headless self-tests look for clips via `STILLPOINT_O3_DIR`, `STILLPOINT_OA4_
 ## Headless checks (no window, no Dock icon, no screen capture)
 
 ```
-Stillpoint.app/Contents/MacOS/Stillpoint --selftest [--clip C] [--plan P] [--frames 5,150]
+Stillpoint.app/Contents/MacOS/Stillpoint --selftest [--clip C] [--plan P] [--frames 5,150] [--fill-plan P] [--mesh-plan P] [--no-v5]
 STILLPOINT_SUPPORT_DIR=<scratch> Stillpoint.app/Contents/MacOS/Stillpoint --selftest-app [--clip C]
 Stillpoint.app/Contents/MacOS/Stillpoint --snapshot DIR [--scale 2] [--hero CLIP] [--long CLIP] [--time 20]
 Stillpoint.app/Contents/MacOS/Stillpoint --migrate
@@ -90,10 +103,14 @@ BUILD_DIR=<dir> ./build.sh --debug       # build a scratch copy instead of build
   - The split kernel must match `sp_warp_*` bit for bit.
   - The plan record lookup must be correct.
   - It also runs the AVPlayer real-time check.
+  - Engine v5: a fill plan and a mesh plan of the same clip (given, or analysed once through the bridge into `<scratch>/selftest/v5` and reused; the fill plan at a wide field of view so the border fill has work). Each must match `sprender` at the frames that use it most, split(0) must equal the kernel's output, the mesh must move pixels, and the fill preview must have no black border paused (exact) or playing (soft edge).
 - `--selftest-app` walks the whole app flow. Run it with `STILLPOINT_SUPPORT_DIR` pointing at a scratch folder. It checks:
   - migration
   - probe
   - pre-flight
+  - engine v5 options: the clip starts from the engine's defaults; the panel's settings round-trip through `analyze --dry-run` into AnalyzeParams and back from the manifest params (not stale), and each change flags re-analysis; fill and Max quality disable each other and the bridge refuses both
+  - the timing auto-calibration readout of the fresh analysis
+  - a re-analysis with Full-frame fill: FILL plan, manifest, preview
   - analyze, including the speed history
   - export progress from PROGRESS lines
   - cancelling a real analysis: the whole process group must be gone, checked with `ps`

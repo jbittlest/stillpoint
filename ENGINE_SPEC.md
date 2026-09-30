@@ -124,6 +124,14 @@ from `shaders/warp.metal` compiled at runtime, AVAssetWriter with source timesca
 jitter), audio passthrough, colour tags copied. Output frame k uses the plan record whose pts matches
 the decoded frame's PTS (±0.5 frame).
 
+`.spblur` v1 (optional synthetic-shutter sidecar, `engine/stillpoint/synth_blur.py`; `sprender --blur`,
+`AnalyzeParams.synth_blur`, `render(..., blur=)`): per frame n taps D_i = R(V_k)ᵀR(V(t_k+s_i)) + weights; the
+`sp_warp_*_blur` kernels average the same source frame warped along the virtual path (M(y)·D_i). Blur judder (the
+baked blur vs the output's own motion) is measured by `eval/judder.py` (plan-based exact, or vision-based for
+renders without a plan -- rotation-only on both sides: the eval's similarity SCALE rate, i.e. forward-flight
+parallax, is not counted). Both remedies are OFF by default (`synth_blur='off'`, `blur_smooth_w=0`): on the
+available footage (exposures <= 4.4 ms, baked streaks p95 < 3 px 1080p-eq) they cost more than they fix.
+
 ## 4. Algorithms (M1 defaults — details in research/sota_algorithms.md and research/sota_ai.md)
 
 1. Telemetry: uniform-grid IMU timing; O3 `offset` already contains -exposure/2 (don't subtract again);
@@ -137,6 +145,65 @@ the decoded frame's PTS (±0.5 frame).
    rebuild plan. 2–3 iterations; stop when HF residual < floor. This also corrects the measured
    gyro-vs-image HF roll over-report (image shows only 29–59% of gyro HF roll on some O3 clips).
 6. Render full-res with Metal (Lanczos-3 or Catmull-Rom; fp32 coordinates).
+
+### 4.1 Full-frame border fill (optional; `engine/stillpoint/fill.py`, 2026-09-29)
+
+Output pixels outside the current source frame are synthesised from up to 4 neighbouring source frames
+(record offsets up to +-20). Output ray of record k -> neighbour j: `r_c = M_j(y) . G_kj . r_v`, `G_kj = Rv_j^T Rv_k`
+(exact rotation; closed-loop corrections are already in M_j) -- the kernels run the unchanged `sp_source_coord()`
+on the composite rows. Parallax: a per-record grid of image-plane parallax velocity (DIS flow between the neighbours
+k-2 and k+2 reprojected into k, robust per cell, temporally smoothed); source at offset d is sampled at x + d.v(x).
+Per-source NCC check + luma gain in the band next to the fill; per-pixel consistency re-weighting; feathered seams;
+soft edge extension where nothing covers. Path optimizer: `AnalyzeParams.fill_overscan` (cap, fraction of the
+short side) with `fill_overscan_mode='coverage'`: per frame and edge, the crop box grows only as far as
+neighbouring frames actually saw (`fill.coverage_overscan`, camera-frame geometry, independent of the path).
+With fill + overscan the crop search's footprint target is the DISPLAYED field of view (`fill.output_footprint`,
+the unclipped output footprint), not the clipped real-pixel area, so `target_footprint` means the same FOV with and
+without fill. Cost: the selection pass is vectorised over 32 records; the align pass reuses the analysis' own
+decoder (downscaled to 480 px), measures the mesh on every 3rd record and the per-source check on every 2nd record
+(+ whenever a new source appears; the rest reuse the same source's result at the nearest checked record).
+The table lives in the `.spplan` FILL section (flags bit 0, see plan_io.py); renderers without fill ignore it.
+`sprender` keeps a ring of +-max_offset decoded frames; `--no-fill` renders the plain kernels.
+Parallax-aware weight (`FillParams.parallax_tol`, x out_w, plan FILL header f32 @60, kernel `sp_par_w`): each
+source's weight is multiplied by exp(-(|offset| |v(X)| / tol)^2) -- where the predicted parallax shift is large (near
+ground in fast low flight: the mesh reaches 40-60 px/frame at 4K on OA4 0012) a far source is likely misaligned, so
+nearer sources or the soft edge extension take over. Older plans carry 0 there (= off). Default OFF: at 0.012 the
+OA4 0012 judge scored 2 of 3 windows worse (+16-20 % HF, more jumps) than the same plan without it.
+Evaluation: `eval/fill_artifacts.py` (fill fraction, seam visibility, temporal flicker of the filled pixels).
+
+### 4.2 Engine v5 options (merge of workstreams A-E, 2026-09-29; `pipeline.AnalyzeParams`, `cli analyze`, `app_bridge analyze`)
+
+| option | default | what | where |
+|---|---|---|---|
+| `timecal` | **on** | per-clip timing self-calibration (offset / readout / exposure box); applied only when confident, confirmed on held-out windows and, for the offset, by the gyro's HF part (none of the 2026-09 test clips) | `timecal.py` |
+| `horizon_lock`, `roll_limit_deg` | 0 (off) | horizon lock v2: second SQP stage toward a crop-feasible leveled target, fades out steep / inverted / mid-flip, never zooms in beyond the unlocked path | `smooth.py` |
+| `fill`, `fill_overscan` | off, 0 | full-frame border fill (4.1); plan FILL section = flags bit 0 | `fill.py` |
+| `mesh_residual` | off | parallax mesh residual: 2-6 Hz affine flow field from persistent tracks, baked as per-frame vertex offsets (plan MESH block = flags bit 1, explicit offset in the header); two extra tracking passes | `mesh.py` |
+| `synth_blur`, `blur_smooth_w` | 'off', 0 | synthetic shutter sidecar `plan.spblur`; blur-aware smoothing term | `synth_blur.py`, `smooth.py` |
+
+`fill`, `mesh_residual` and `synth_blur` have separate sprender kernels and are mutually exclusive for now
+(`pipeline.check_params` raises; sprender refuses a plan / call that asks for two). Everything else combines.
+With these defaults the v5 plans of the 7 scoreboard clips equal engine v4's (5 byte-identical; OA4 0012 <= 0.0003 px,
+DJI_0025 <= 0.03 px): timecal fitted but applied nothing on any of them.
+
+**Per-camera defaults (gate v6, 2026-09-30).** `AnalyzeParams()` keeps the camera-independent defaults above (scripts
+and the gate scoreboard construct it directly). The front ends -- `app_bridge analyze` / `probe` (the Mac app) and
+`cli analyze` -- resolve every option that is not given through ONE helper, `app_bridge.resolve_for_video` =
+AnalyzeParams' defaults + `app_bridge.CAMERA_OPTION_DEFAULTS` (substring of `Telemetry.camera`). Entries are added
+only for a real win with no meaningful regression on the ProRes decision gate (`work/gate/v6/decision.md`):
+
+| camera | default | gate evidence (vs the v5 default, 95 % CI over windows) |
+|---|---|---|
+| DJI O3 | `fill=True, fill_overscan=0.06` | HF -14.5 % [-24, -4], 2-8 Hz -15.7 %, roll -7.9 %, jumps >1 px 13 -> 8, win-rate vs Gyroflow +2.3 pp, nothing worse, +0-3 % analysis time |
+| Osmo Action 4 | none | fill: HF -7 % inside noise; mesh: HF not real, roll +7.8 % borderline, 6.6x analysis time |
+| O4 Pro | none | fill: calm +11.7 % [+3, +21], jumps 6 -> 10; mesh: HF -9.5 % inside noise, ~7x analysis time |
+
+`mesh_residual` ('Max quality') stays a toggle on every camera: on the O3 it passes against the v5 default (HF -24 %)
+but head-to-head against fill its HF edge (-11 % [-23, +3]) is inside noise, jumps >1 px are worse (8 -> 18) and it
+costs +30-46 % analysis time. Its cost is ~26-34 ms per frame, so the pre-flight factor is per camera
+(`app_bridge.CAMERA_TIME_FACTORS`: O3 x1.4, OA4 x6.6, O4 Pro x6.5). Horizon lock stays off (not re-tested in v6; O4 Pro
+gravity is 6-10 deg off in turns). The composed per-camera-default scoreboard is `work/gate/v6/scoreboard.md`
+(`scripts/compose_scoreboard.py`).
 
 ## 5. Evaluation (M1 gate)
 

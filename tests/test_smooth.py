@@ -2,7 +2,8 @@
 
 Synthetic O3-like telemetry (KB4 lens, 3840x2160, 9.72 ms readout, 2 kHz orientation): a smooth
 intentional path + injected 3-40 Hz jitter + 360-degree barrel rolls peaking at 800 deg/s; 2-4 Hz roll rocking (e);
-fast 90-degree turns with 2-4 Hz shake (f).
+fast 90-degree turns with 2-4 Hz shake (f); horizon lock v2 in a gravity-aligned (NED) world: cruise,
+strength / roll limit, a crop-limited banked turn, a 1200 deg/s flip and a pitch loop through nadir/zenith.
 Set STILLPOINT_FAST=1 to skip the 23,500-frame runtime test.
 """
 import os
@@ -13,8 +14,8 @@ import pytest
 from scipy.signal import butter, sosfiltfilt
 
 from stillpoint.geom import Lens, qexp, qlog, qmul, qconj, slerp_series
-from stillpoint.smooth import (SmoothParams, _jr_inv, check_crop, fx_for_crop_area, map_output_points,
-                               optimize_path)
+from stillpoint.smooth import (SmoothParams, _jr_inv, check_crop, fx_for_crop_area, gravity_world, horizon_angles,
+                               horizon_jacobian, map_output_points, optimize_path)
 from stillpoint.types import Telemetry
 
 FPS = 60000 / 1001
@@ -251,26 +252,242 @@ def test_zoom_disabled_and_infeasible_crop_follows_camera():
     assert 0.9 < rv / rc < 1.1
 
 
-def test_horizon_lock_no_crash_and_levels():
-    n = 900
-    tel = make_tel(n, seed=4)
+# ----------------------------------------------------------------------------- horizon lock v2
+
+
+def _mat_q(M):
+    from stillpoint.geom import mat_to_quat
+    return mat_to_quat(np.asarray(M, dtype=np.float64)[None])[0]
+
+
+# level camera looking north in a NED world: camera x = east, y = down, z = north
+Q_LEVEL = _mat_q([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+
+
+def make_grav_tel(n_frames, yaw_fn, elev_fn, roll_fn, jit_rms_deg=0.3, seed=1):
+    """Synthetic O3-like telemetry in a gravity-aligned world (NED, z down; gravity_q is imu_q as on the O3):
+    yaw about world down, elevation (+ = looking down) about the camera x axis, then roll about the optical axis,
+    plus 3-40 Hz jitter."""
+    T = n_frames / FPS
+    t = np.arange(-0.2, T + 0.2, 1.0 / 2000.0)
+    ex, ez = np.eye(3)[0], np.eye(3)[2]
+    q = qmul(qexp(yaw_fn(t)[:, None] * ez), np.broadcast_to(Q_LEVEL, (len(t), 4)))
+    q = qmul(q, qexp(-elev_fn(t)[:, None] * ex))
+    q = qmul(q, qexp(roll_fn(t)[:, None] * ez))
+    q = qmul(q, qexp(_jitter(t, jit_rms_deg, seed=seed)))
+    W, H = 3840, 2160
+    lens = Lens('kb4', 1405.129, 1405.129, (W - 1) / 2, (H - 1) / 2, O3_K.copy(), W, H)
+    pts = np.arange(n_frames) / FPS
+    tel = Telemetry(source='synthetic', camera='synthetic', width=W, height=H, fps=FPS, frame_pts=pts,
+                    frame_t=pts.copy(), exposure_s=np.full(n_frames, 0.002), readout_s=0.00972, lens=lens,
+                    imu_t=t, imu_q=q, imu_rate=2000.0, has_highrate=True, eis_baked=False,
+                    segments=[(0, n_frames - 1)])
+    tel.gravity_q = tel.imu_q
+    return tel
+
+
+def _hz_run(tel, area=0.6, **kw):
+    fx = fx_for_crop_area(tel.lens, tel.width, tel.height, OUT_W, OUT_H, area)
+    V, ofx, info = optimize_path(tel, _qfn(tel), np.arange(tel.n_frames), OUT_W, OUT_H,
+                                 SmoothParams(min_out_fx=fx, **kw), return_info=True)
+    rho, elev, _ = horizon_angles(V, gravity_world(tel, tel.frame_t))
+    crop = check_crop(tel, _qfn(tel), np.arange(tel.n_frames), V, ofx, OUT_W, OUT_H, 64, 0.0)
+    return V, ofx, info, np.rad2deg(rho), crop
+
+
+def _hf_deg(V, sl=slice(None)):
+    b = _band(V)[sl]
+    return float(np.rad2deg(np.sqrt((b ** 2).sum(1).mean())))
+
+
+N_HZ = 900
+DEG = np.deg2rad
+
+
+@pytest.fixture(scope='module')
+def cruise_case():
+    """30 s of cruise: slow yaw wander, 10 deg nose-down, bank rocking +-8 deg at 0.08 Hz."""
+    tel = make_grav_tel(N_HZ, lambda t: 0.3 * np.sin(2 * np.pi * 0.05 * t), lambda t: DEG(10) + 0.05 * np.sin(0.7 * t),
+                        lambda t: DEG(8) * np.sin(2 * np.pi * 0.08 * t + 0.4))
+    return tel, _hz_run(tel), _hz_run(tel, horizon_lock=1.0)
+
+
+def test_horizon_angle_and_jacobian():
+    """rho = atan2(g_x, g_y) is the horizon tilt (level camera 0, rolled camera = its roll, independent of the
+    elevation) and horizon_jacobian is its exact derivative for V -> V Exp(delta)."""
+    g_w = np.array([[0.0, 0.0, 1.0]])
+    for el in (-40.0, 0.0, 30.0, 70.0):
+        for r in (-120.0, -15.0, 0.0, 25.0, 170.0):
+            V = qmul(qmul(Q_LEVEL[None], qexp(np.array([[-DEG(el), 0, 0]]))), qexp(np.array([[0, 0, DEG(r)]])))
+            rho, elev, _ = horizon_angles(V, g_w)
+            assert abs(np.rad2deg(rho[0]) - r) < 1e-9 and abs(np.rad2deg(elev[0]) - el) < 1e-9
+    rng = np.random.default_rng(0)
+    V = qexp(rng.normal(size=(50, 3)))
+    gw = np.tile([0.0, 0.0, 1.0], (50, 1))
+    rho, elev, g = horizon_angles(V, gw)
+    keep = np.abs(np.rad2deg(elev)) < 75
+    J = horizon_jacobian(g)
+    h = 1e-6
+    for a in range(3):
+        e = np.zeros((50, 3))
+        e[:, a] = h
+        rp, _, _ = horizon_angles(qmul(V, qexp(e)), gw)
+        rm, _, _ = horizon_angles(qmul(V, qexp(-e)), gw)
+        num = np.angle(np.exp(1j * (rp - rm))) / (2 * h)
+        np.testing.assert_allclose(J[keep, a], num[keep], atol=1e-5)
+
+
+def test_horizon_lock_levels_cruise(cruise_case):
+    """Full lock: the output horizon is level (to 0.05 deg) wherever the crop allows it (here everywhere), with no
+    added 2-8 Hz motion and no crop violation; off, the path keeps the camera's bank."""
+    tel, (V0, f0, i0, r0, c0), (V1, f1, i1, r1, c1) = cruise_case
+    sl = slice(60, N_HZ - 60)
+    print(f'\n(h1) |horizon| p95 off {np.percentile(np.abs(r0), 95):.2f} deg -> lock {np.percentile(np.abs(r1), 95):.3f}; '
+          f'2-8 Hz {_hf_deg(V0, sl):.4f} -> {_hf_deg(V1, sl):.4f} deg; {i1["horizon"]}')
+    assert np.percentile(np.abs(r0), 95) > 6.0
+    assert i1['horizon_active'] and np.abs(r1).max() < 0.05
+    assert _hf_deg(V1, sl) <= 1.1 * _hf_deg(V0, sl) + 1e-4
+    assert c1.max() <= 0.0 and np.allclose(f1, f1[0])
+
+
+def test_horizon_strength_and_roll_limit(cruise_case):
+    """strength 0.5 halves the bank; a 5 deg roll limit leaves |bank| <= 5 deg untouched and clips the rest."""
+    tel, (V0, f0, i0, r0, c0), _ = cruise_case
+    _, _, ih, rh, ch = _hz_run(tel, horizon_lock=0.5)
+    big = np.abs(r0) > 2.0
+    ratio = rh[big] / r0[big]
+    assert 0.47 < np.median(ratio) < 0.53 and ch.max() <= 0.0
+    _, _, il, rl, cl = _hz_run(tel, horizon_lock=1.0, roll_limit_deg=5.0)
+    assert np.abs(rl).max() < 5.05 and cl.max() <= 0.0
+    inside = np.abs(r0) < 3.0
+    assert np.median(np.abs(rl[inside] - r0[inside])) < 0.05  # free band: the smoother's own roll (up to the rounded
+    assert np.abs(rl[inside] - r0[inside]).max() < 1.0       # corners of the clipped stretches next to it)
+    assert np.abs(rl[np.abs(r0) > 6.0]).min() > 4.9           # beyond: clipped to the limit, not leveled
+
+
+def test_horizon_off_and_bool():
+    """Strength 0 with gravity present is bit-identical to no gravity; True means strength 1."""
+    tel = make_grav_tel(300, lambda t: 0 * t, lambda t: DEG(5) + 0 * t, lambda t: DEG(4) + 0 * t, seed=3)
     fx = fx_for_crop_area(tel.lens, tel.width, tel.height, OUT_W, OUT_H, 0.6)
-    # no gravity -> silently off
-    V0, f0, i0 = optimize_path(tel, _qfn(tel), np.arange(n), OUT_W, OUT_H,
-                               SmoothParams(min_out_fx=fx, horizon_lock=True), return_info=True)
-    assert not i0['horizon_active']
-    tel_g = make_tel(n, seed=4, gravity=True)
-    V1, f1, i1 = optimize_path(tel_g, _qfn(tel_g), np.arange(n), OUT_W, OUT_H,
-                               SmoothParams(min_out_fx=fx, horizon_lock=True), return_info=True)
-    assert i1['horizon_active']
-    from stillpoint.geom import quat_to_mat
-    G = quat_to_mat(qexp(np.array([0.3, -0.2, 0.0])))
-    g_w = G.T @ np.array([0.0, 0.0, 1.0])
+    Va, fa = optimize_path(tel, _qfn(tel), np.arange(300), OUT_W, OUT_H, SmoothParams(min_out_fx=fx))
+    tel.gravity_q = None
+    Vb, fb = optimize_path(tel, _qfn(tel), np.arange(300), OUT_W, OUT_H, SmoothParams(min_out_fx=fx, horizon_lock=1.0))
+    assert np.array_equal(Va, Vb) and np.array_equal(fa, fb)
+    tel.gravity_q = tel.imu_q
+    assert SmoothParams(horizon_lock=True).lock_strength() == 1.0
+    _, _, _, rt, _ = _hz_run(tel, horizon_lock=True)
+    assert np.abs(rt).max() < 0.05
 
-    def gx(V):
-        return np.abs(np.einsum('kji,j->ki', quat_to_mat(V), g_w)[:, 0]).mean()
 
-    assert gx(V1) < 0.7 * gx(V0)      # levels as far as the crop margin allows (M1: soft L2 term)
+def test_horizon_lock_crop_limited_bank():
+    """A sustained 35 deg banked turn at a Gyroflow-like crop: full leveling does not fit, so the lock levels as far
+    as the crop allows (with margin) -- smoothly: no crop violation, no zoom, and no extra 2-8 Hz motion (a target on
+    the crop border would make the path copy the camera's shake along it)."""
+    n = 1200
+    tel = make_grav_tel(n, lambda t: 0.4 * t, lambda t: DEG(10) + 0 * t,
+                        lambda t: DEG(35) * np.clip(np.minimum(t - 4.0, 16.0 - t) / 1.5, 0, 1), seed=5)
+    V0, f0, i0, r0, c0 = _hz_run(tel)
+    V1, f1, i1, r1, c1 = _hz_run(tel, horizon_lock=1.0)
+    t = tel.frame_t
+    mid = (t > 7) & (t < 13)
+    calm = (t < 3.0) | (t > 17.5)
+    sl = slice(60, n - 60)
+    print(f'\n(h2) mid-turn |horizon| off {np.median(np.abs(r0[mid])):.1f} -> lock {np.median(np.abs(r1[mid])):.1f} deg; '
+          f'calm {np.abs(r1[calm]).max():.3f}; 2-8 Hz {_hf_deg(V0, sl):.4f} -> {_hf_deg(V1, sl):.4f}; crop '
+          f'{c1.max():+.2f}px; {i1["horizon"]}')
+    assert np.median(np.abs(r0[mid])) > 30.0
+    assert np.median(np.abs(r1[mid])) < np.median(np.abs(r0[mid])) - 4.0      # partly leveled ...
+    assert np.median(np.abs(r1[mid])) > 5.0                                     # ... not fully (crop)
+    assert np.abs(r1[calm]).max() < 0.1                                         # level again after the turn
+    assert c1.max() <= 0.0 and np.allclose(f1, f1[0])
+    assert _hf_deg(V1, sl) <= 1.15 * _hf_deg(V0, sl) + 2e-4
+    d2 = np.diff(np.unwrap(DEG(r1)), 2) * FPS ** 2                              # horizon angular acceleration
+    d2o = np.diff(np.unwrap(DEG(r0)), 2) * FPS ** 2
+    assert np.percentile(np.abs(d2[sl]), 99) <= 1.5 * np.percentile(np.abs(d2o[sl]), 99) + DEG(20)
+
+
+def test_horizon_lock_graceful_flip():
+    """A 360 deg roll in 0.6 s (peak 1200 deg/s): the lock fades out before it (lookahead), the path follows the flip
+    (the crop forces it), and the lock re-enters smoothly after: level away from it, no crop violation, no extra
+    2-8 Hz motion around it, no angular-rate overshoot."""
+    n = 1200
+    tf = 10.0
+
+    def roll(t):
+        u = np.clip((t - tf) / 0.6, 0, 1)
+        return DEG(5) * np.sin(0.5 * t) + 2 * np.pi * (u - np.sin(2 * np.pi * u) / (2 * np.pi))
+    tel = make_grav_tel(n, lambda t: 0.2 * np.sin(0.1 * t), lambda t: DEG(10) + 0 * t, roll, seed=6)
+    V0, f0, i0, r0, c0 = _hz_run(tel)
+    V1, f1, i1, r1, c1 = _hz_run(tel, horizon_lock=1.0)
+    t = tel.frame_t
+    k = int(np.searchsorted(t, tf + 0.3))
+    rate = np.rad2deg(np.linalg.norm(qlog(qmul(qconj(V1[:-1]), V1[1:])), axis=1)) * FPS
+    rate0 = np.rad2deg(np.linalg.norm(qlog(qmul(qconj(V0[:-1]), V0[1:])), axis=1)) * FPS
+    near = (t > tf - 1.5) & (t < tf + 2.1)
+    away = ((t < tf - 1.5) | (t > tf + 2.1)) & (t > 1) & (t < t[-1] - 1)
+    print(f'\n(h3) flip: mid rate {rate[k]:.0f} deg/s, max {rate.max():.0f} (off {rate0.max():.0f}); away |horizon| max '
+          f'{np.abs(r1[away]).max():.3f}; 2-8 Hz near {_hf_deg(V0[near]):.4f} -> {_hf_deg(V1[near]):.4f}; crop '
+          f'{c1.max():+.2f}; {i1["horizon"]}')
+    assert rate[k] > 600.0                                     # follows the flip
+    assert rate.max() < 1.1 * rate0.max()                      # no overshoot / snap
+    assert np.abs(r1[away]).max() < 0.1                        # level before and after
+    assert c1.max() <= 0.0
+    assert _hf_deg(V1[near]) <= 1.15 * _hf_deg(V0[near]) + 2e-4
+    assert i1['horizon']['frac_off'] > 0.0
+
+
+def test_horizon_lock_never_zooms_in_further():
+    """Leveling never costs crop: with the lock the zoom stays <= the unlocked path's (horizon_zoom=False, default);
+    free zoom (horizon_zoom=True) buys leveling with zoom on this crop-limited shaky roll + flip."""
+    tf = 8.0
+
+    def roll(t):
+        u = np.clip((t - tf) / 0.6, 0, 1)
+        return DEG(20) * np.sin(0.5 * t) + 2 * np.pi * (u - np.sin(2 * np.pi * u) / (2 * np.pi))
+    tel = make_grav_tel(900, lambda t: 0.3 * np.sin(0.2 * t), lambda t: DEG(15) + 0.2 * np.sin(0.9 * t), roll,
+                        seed=9, jit_rms_deg=0.8)
+    V0, f0, _, r0, _ = _hz_run(tel, area=0.7)
+    V1, f1, _, r1, c1 = _hz_run(tel, area=0.7, horizon_lock=1.0)
+    _, f2, _, _, c2 = _hz_run(tel, area=0.7, horizon_lock=1.0, horizon_zoom=True)
+    print(f'\n(h5) zoom max: off {f0.max() / f0.min():.4f}, lock {f1.max() / f0.min():.4f} (lock/off max '
+          f'{(f1 / f0).max():.6f}), free zoom {f2.max() / f0.min():.4f} (/off max {(f2 / f0).max():.5f})')
+    assert f0.max() > 1.002 * f0.min()                        # the unlocked path does zoom here
+    assert (f1 / f0).max() < 1.0 + 1e-5                        # the lock never zooms in further
+    assert (f2 / f0).max() > 1.002                             # (with free zoom it would)
+    assert c1.max() <= 0.0 and c2.max() <= 0.0
+    assert np.median(np.abs(r1)) < np.median(np.abs(r0))
+
+
+def test_horizon_lock_loop_through_nadir():
+    """A 360 deg pitch loop in 2.5 s passes straight down and straight up, where an Euler rebuild (Gyroflow) flips
+    the roll by 180 deg: the lock fades out, the path stays continuous and never spins faster than the camera."""
+    n = 1200
+    tl = 9.0
+
+    def elev(t):
+        u = np.clip((t - tl) / 2.5, 0, 1)
+        return DEG(10) + 2 * np.pi * (u - np.sin(2 * np.pi * u) / (2 * np.pi))
+    tel = make_grav_tel(n, lambda t: 0.2 * np.sin(0.1 * t), elev, lambda t: DEG(6) * np.sin(0.4 * t), seed=8)
+    V0, f0, i0, r0, c0 = _hz_run(tel)
+    V1, f1, i1, r1, c1 = _hz_run(tel, horizon_lock=1.0)
+    t = tel.frame_t
+    R = _qfn(tel)(t)
+    rate_c = np.rad2deg(np.linalg.norm(qlog(qmul(qconj(R[:-1]), R[1:])), axis=1)) * FPS
+    rate = np.rad2deg(np.linalg.norm(qlog(qmul(qconj(V1[:-1]), V1[1:])), axis=1)) * FPS
+    # fade-out / re-entry: the smoother itself uses the whole crop just before / after the loop (lookahead), so
+    # leveling is infeasible there and the crop-feasible fraction ramps out / back in over horizon_crop_fade_s (starts
+    # ~2 s before the loop, level again ~2 s after it ends at tl + 2.5 s; Gyroflow's Euler rebuild instead spins the
+    # output 180 deg inside the loop)
+    away = ((t < tl - 2.25) | (t > tl + 5.0)) & (t > 1) & (t < t[-1] - 1)
+    lvl = np.flatnonzero((t > tl + 2.5) & (np.abs(r1) > 0.1))
+    t_level = (t[lvl[-1]] - (tl + 2.5)) if len(lvl) else 0.0
+    print(f'\n(h4) loop: max rate {rate.max():.0f} deg/s (camera {rate_c.max():.0f}); away |horizon| '
+          f'{np.abs(r1[away]).max():.3f}; level again {t_level:.2f} s after the loop; crop {c1.max():+.2f}; '
+          f'{i1["horizon"]}')
+    assert rate.max() < 1.1 * rate_c.max()
+    assert np.abs(r1[away]).max() < 0.1 and t_level < 2.5
+    assert c1.max() <= 0.0
+    assert i1['horizon']['frac_steep'] > 0.0
 
 
 # ----------------------------------------------------------------------------- (e) 2-4 Hz roll, fast turns

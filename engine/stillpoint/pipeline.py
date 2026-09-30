@@ -97,8 +97,21 @@ class AnalyzeParams:
     target_area: float = 0.0             # crop_mode 'eval': >0 use this eval-style area instead of measuring
     allow_zoom: bool = True
     max_zoom: float = 1.5                # max_out_fx / min_out_fx
-    calibrate: bool = False              # M1 A/B on DJI_0025: WP-E's +11.8% readout raised eval jello 0.555 -> 0.958
+    horizon_lock: float = 0.0            # horizon lock strength 0..1 (smooth.py 'horizon lock v2'): the fraction of the
+                                         # bank (beyond roll_limit_deg) removed, relative to gravity; fades out when the
+                                         # camera is steep / inverted / mid-flip; never beyond what the crop allows.
+                                         # 0 = off (the path is bit-identical to the unlocked optimizer)
+    roll_limit_deg: float = 0.0          # > 0: bank up to this is left alone (natural FPV feel); only the excess is
+                                         # leveled
+    calibrate: bool = False              # LEGACY calib.self_calibrate (M1 A/B on DJI_0025: its +11.8% readout raised
+                                         # eval jello 0.555 -> 0.958). Superseded by `timecal`; wins over it when True.
     calib_keep: tuple = ('offset_s', 'readout_s', 'focal_scale', 'extrinsic_rotvec', 'skew')
+    timecal: bool = True                 # per-clip timing self-calibration (timecal.py, engine v5): delta-residual fit
+                                         # of offset / readout / exposure slope / exposure-box width on 3 automatically
+                                         # chosen windows (~3 % of the clip); applied only when confident, worth it
+                                         # (cost gain, held-out windows) and, for the offset, confirmed by the gyro's
+                                         # HF part; else the metadata timing is kept (all 2026-09 test clips: kept)
+    timecal_overrides: dict = field(default_factory=dict)   # extra TimecalParams fields
     closed_loop_iters: int = 2           # folds; the loop measures closed_loop_iters + 1 plans at most
     loop_iters_oa4: int = 0              # Osmo Action 4 clips with the in-camera 1 kHz attitude: at most this many
                                          # folds (-1: closed_loop_iters). With the corrected OA4 timing the vision
@@ -191,6 +204,38 @@ class AnalyzeParams:
                                          # window of the clip; plan records carry the source PTS, so `render` with
                                          # --start-frame renders it)
     exposure_avg: bool = True            # row orientations averaged over each row's exposure (plan_build)
+    # ---- full-frame border fill (engine/stillpoint/fill.py; workstream C 2026-09-29)
+    fill: bool = False                   # compute the fill table of the final plan (plan.spplan FILL section): the
+                                         # renderer synthesises output pixels outside the current source frame from
+                                         # up to 4 neighbouring frames (+-20); older renderers ignore the section
+                                         # (and would show black where the overscan leaves the source).
+                                         # Recommended (scoreboard 2026-09-29): fill=True + fill_overscan=0.06 at the
+                                         # usual FOV -- O3 HF -3/-20/-51 % on 3 gate windows vs v4, OA4 neutral
+    fill_overscan: float = 0.0           # path optimizer: the output border may leave the source by up to this
+                                         # fraction of min(src_w, src_h) (source px; fill supplies it). 0 = the crop
+                                         # constraint as is
+    fill_overscan_mode: str = 'coverage'  # 'coverage': per frame and edge only as far as neighbouring frames (+-20)
+                                         # actually saw (fill.coverage_overscan; camera-frame geometry, cheap);
+                                         # 'uniform': the full cap everywhere
+    fill_align: bool = True              # fill: parallax mesh + per-source consistency check (decodes at 480 px)
+    fill_overrides: dict = field(default_factory=dict)   # extra fill.FillParams fields
+    # ---- motion-blur harmonization (workstream D; eval/judder.py measures blur judder)
+    blur_smooth_w: float = 0.0           # SmoothParams.w_blur: the path follows the camera along long exposure streaks
+                                         # (0 = off: on OA4 0012, exposures <= 4.4 ms, w 100 cut the plan-exact
+                                         # judder only 2-15% while adding path HF; inactive on O3 (streaks < 2 px))
+    synth_blur: str = 'off'              # synthetic shutter along the virtual path: 'off' | 'auto' (mask the measured
+                                         # judder) | 'angle' (complete the exposure to synth_blur_angle); writes
+                                         # plan.spblur next to plan.spplan (render(..., blur=...) / sprender --blur)
+    synth_blur_kappa: float = 1.0        # 'auto': synthetic streak = kappa x the mismatched streak
+    synth_blur_angle: float = 180.0      # 'angle': total shutter angle
+    mesh_residual: bool = False          # parallax-aware MESH RESIDUAL (mesh.py) on the final plan: the 2-10 Hz
+                                         # residual image motion left by the rotation plan (near-field ground bouncing
+                                         # against a steady horizon on low flights), measured with persistent tracks as
+                                         # a quadratic flow field, baked into the plan as a bounded per-frame mesh
+                                         # offset field (.spplan mesh extension; v1 readers ignore it). Costs two
+                                         # extra preview+tracking passes over the clip. Off by default: see mesh.py /
+                                         # the workstream-A report for the A/B on the scoreboard windows
+    mesh_overrides: dict = field(default_factory=dict)   # MeshParams fields
     verbose: bool = True
 
 
@@ -203,9 +248,9 @@ class _Progress:
     """Maps (stage, local fraction) to a monotonic overall fraction and calls the user's progress callback
     (at most every 0.2 s per stage unless the fraction hits 1); checks cancel() on every call.
     Stage weights ~ measured share of the run time (M2/v3 runs): the measurement passes dominate."""
-    WEIGHTS = (('telemetry', 0.02), ('calibration', 0.005), ('decode', 0.0), ('crop', 0.05), ('path', 0.015),
-               ('measure0', 0.40), ('fold1', 0.03), ('measure1', 0.33), ('fold2', 0.02), ('measure2', 0.05),
-               ('final', 0.03), ('quality', 0.08), ('write', 0.01))
+    WEIGHTS = (('telemetry', 0.02), ('calibration', 0.03), ('decode', 0.0), ('crop', 0.05), ('path', 0.015),
+               ('measure0', 0.375), ('fold1', 0.03), ('measure1', 0.33), ('fold2', 0.02), ('measure2', 0.05),
+               ('final', 0.03), ('fill', 0.0), ('mesh', 0.0), ('quality', 0.08), ('write', 0.01))
 
     def __init__(self, fn: Optional[ProgressFn], cancel: Optional[CancelFn]):
         self.fn, self.cancel = fn, cancel
@@ -555,14 +600,18 @@ class _GpuPreview:
         return self.torch.from_numpy(np.ascontiguousarray(buf)).to('mps').to(self.torch.float32)
 
     def render(self, src, k: int, plan: Optional[Plan] = None):
-        from .render_ref import kernel_params
+        from .render_ref import kernel_params, mesh_buffer
         torch = self.torch
         pl = plan if plan is not None else self.plan
         P = kernel_params(pl, k, dst_w=self.Wo, dst_h=self.Ho, out_sx=self.osx, out_sy=self.osy, src_sx=self.ssx,
                           src_sy=self.ssy, buf_w=self.bw, buf_h=self.bh, kernel=self.kernel, iters=self.iters)
         Pt = torch.from_numpy(P).to('mps')
         Mt = torch.from_numpy(np.ascontiguousarray(pl.row_mats[k], dtype=np.float32).reshape(-1)).to('mps')
-        self.lib.sp_preview_gray(src, self.dst, self.val, Pt, Mt, threads=(self.Wo, self.Ho))
+        if getattr(pl, 'mesh', None) is not None:          # mesh residual (mesh.py): the *_mesh kernel
+            self.lib.sp_preview_gray_mesh(src, self.dst, self.val, Pt, Mt, mesh_buffer(pl, k),
+                                          threads=(self.Wo, self.Ho))
+        else:
+            self.lib.sp_preview_gray(src, self.dst, self.val, Pt, Mt, threads=(self.Wo, self.Ho))
         img = torch.clamp(torch.floor(self.dst + 0.5), 0, 255).to(torch.uint8).cpu().numpy()
         return img, (self.val > 0.5).cpu().numpy()
 
@@ -1305,12 +1354,19 @@ class _PathSolver:
 
 
 def _smooth_params(prm: AnalyzeParams, fx0: float, tm: TimeModel, tel: Telemetry, pg=None, stage: str = 'path',
-                   lo: float = 0.0, hi: float = 1.0):
+                   lo: float = 0.0, hi: float = 1.0, crop_extend: Optional[np.ndarray] = None):
     from .smooth import SmoothParams
     sp = SmoothParams(smoothness=prm.smoothness, min_out_fx=fx0, max_out_fx=fx0 * prm.max_zoom,
                       allow_zoom=prm.allow_zoom)
+    if prm.horizon_lock:
+        sp.horizon_lock = float(prm.horizon_lock)
+        sp.roll_limit_deg = float(prm.roll_limit_deg or 0.0)
     if prm.smooth_window is not None and prm.smooth_window >= 0:
         sp.window = int(prm.smooth_window)
+    if crop_extend is not None:                           # fill: the border may leave the source (overscan)
+        sp.crop_extend = crop_extend
+    if prm.blur_smooth_w and prm.blur_smooth_w > 0:
+        sp.w_blur = float(prm.blur_smooth_w)
     for k, v in (prm.smooth_overrides or {}).items():
         setattr(sp, k, v)
     if pg is not None:
@@ -1342,6 +1398,21 @@ def _gf_footprint_cached(fov_match: str, n_frames: Optional[int] = None) -> Opti
     return None
 
 
+def check_params(prm: AnalyzeParams) -> None:
+    """Reject option combinations the renderer cannot honour yet (engine v5 merge, 2026-09-29): the full-frame fill,
+    the mesh residual and the synthetic shutter each have their own sprender kernels, so at most one of them per plan.
+    Path-level options (horizon_lock, blur_smooth_w, timecal) combine with anything."""
+    on = [n for n, v in (('fill', bool(prm.fill)), ('mesh_residual', bool(prm.mesh_residual)),
+                         ('synth_blur', bool(prm.synth_blur) and prm.synth_blur != 'off')) if v]
+    if len(on) > 1:
+        raise ValueError(f'AnalyzeParams: {" + ".join(on)} cannot be combined yet (separate renderer kernels); '
+                         f'pick one')
+    if prm.synth_blur not in ('off', 'auto', 'angle', '', None):
+        raise ValueError(f"AnalyzeParams.synth_blur must be 'off', 'auto' or 'angle', not {prm.synth_blur!r}")
+    if not 0.0 <= float(prm.horizon_lock or 0.0) <= 1.0:
+        raise ValueError(f'AnalyzeParams.horizon_lock is a strength 0..1, not {prm.horizon_lock!r}')
+
+
 def analyze(video: str, out_dir: str, params: Optional[AnalyzeParams] = None,
             progress: Optional[ProgressFn] = None, cancel: Optional[CancelFn] = None) -> dict:
     """Full analysis of one clip. Writes <out_dir>/plan.spplan, report.json, analysis.npz. Returns the report.
@@ -1358,6 +1429,7 @@ def analyze(video: str, out_dir: str, params: Optional[AnalyzeParams] = None,
     cancel and SIGTERM; measurement workers die with this process."""
     from .workspace import JobDir, combine_cancel, preflight, sigterm_cancels, work_root
     prm = params or AnalyzeParams()
+    check_params(prm)
     if prm.work_dir:
         os.environ['STILLPOINT_WORK_DIR'] = os.path.abspath(os.path.expanduser(prm.work_dir))
     term = threading.Event()
@@ -1445,7 +1517,8 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
     solver: dict = dict(s=None, ok=True, n=0, s_total=0.0)
     res_prm = ResidualParams(**(prm.residual_overrides or {}))
     will_measure = not (prm.closed_loop_iters == 0 and not prm.measure_open_loop)
-    pool_stage = 'measure' if will_measure else ('quality' if (prm.quality and F >= 90) else 'none')
+    pool_stage = 'measure' if (will_measure or prm.mesh_residual) else \
+        ('quality' if (prm.quality and F >= 90) else 'none')
     try:
         from .video import gray_size, probe
         vinfo = probe(video)
@@ -1486,6 +1559,32 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                            focal_scale=tm.focal_scale if 'focal_scale' in prm.calib_keep else 1.0,
                            extrinsic_rotvec=(np.asarray(tm.extrinsic_rotvec) if 'extrinsic_rotvec' in prm.calib_keep
                                              else np.zeros(3)), notes=tm_full.notes)
+        elif prm.timecal and tel.has_highrate:
+            from .timecal import TimecalParams, apply_exposure_slope, calibrate_timing
+            try:
+                tm = calibrate_timing(tel, stream=stream, params=TimecalParams(**(prm.timecal_overrides or {})),
+                                      cancel=pg.cancel_fn,
+                                      progress=lambda f, m: pg('calibration', f, m))
+            except (AnalysisCancelled, InterruptedError):
+                raise
+            except Exception as e:  # noqa: BLE001 - a failed calibration keeps the metadata timing
+                _log(prm, f'timing calibration failed ({e!r}); keeping the metadata timing')
+                tm = TimeModel(notes={'timecal': dict(status=f'failed: {e!r}'[:500])})
+            tel = apply_exposure_slope(tel, tm)
+            tc = tm.notes.get('timecal', {})
+            fit = tc.get('fit', {})
+            if fit.get('status') == 'ok':
+                est, sig, jnt = fit['estimate'], fit['sigma'], fit['joint']['estimate']
+                val = fit.get('validation') or {}
+                _log(prm, f'timecal: offset {est["offset_ms"]:+.3f} +- {sig["offset_ms"]:.3f} ms (windows '
+                          f'{[round(w["offset_ms"], 3) for w in fit["per_window"]]}; cost gain '
+                          f'{val.get("gain_in", float("nan")) * 100:+.2f} %, held-out '
+                          f'{[round(h["gain"] * 100, 2) for h in val.get("heldout", [])]} %); joint readout '
+                          f'{jnt["readout_pct"]:+.2f} %, focal {jnt["focal_pct"]:+.2f} %, box {jnt["box_pct"]:+.1f} %; '
+                          f'applied {tc.get("applied")} ({"; ".join(tc.get("decision", {}).get("reasons", []))[:300]})'
+                          f' [{tc.get("runtime_s", {}).get("total", 0):.1f} s]')
+            else:
+                _log(prm, f'timecal: {tc.get("status")} -> metadata timing')
         else:
             tm = TimeModel()
         if prm.readout_scale != 1.0:
@@ -1497,6 +1596,21 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                      extrinsic_deg=np.rad2deg(np.asarray(tm.extrinsic_rotvec)).tolist(),
                      status=tm.notes.get('calib', {}).get('status'),
                      final=tm.notes.get('calib', {}).get('final'))
+        if 'timecal' in tm.notes:
+            tc = tm.notes['timecal']
+            fit = tc.get('fit', {})
+            calib['timecal'] = dict(
+                status=tc.get('status'), applied=tc.get('applied'), decision=tc.get('decision'),
+                estimate=fit.get('estimate'), sigma=fit.get('sigma'), per_window=fit.get('per_window'),
+                joint={k: (fit.get('joint') or {}).get(k) for k in ('estimate', 'sigma', 'active')},
+                nuisance_decision=fit.get('nuisance_decision'), validation=fit.get('validation'),
+                offset_checks=fit.get('offset_checks'), nuisance_only=fit.get('nuisance_only'),
+                hf_check={k: v for k, v in (fit.get('hf_check') or {}).items() if k != 'curve'},
+                coarse=fit.get('coarse'), fine={k: v for k, v in (fit.get('fine') or {}).items() if k != 'cost_curve'},
+                cost_gain=fit.get('cost_gain'), n_deltas=fit.get('n_deltas'), windows=tc.get('windows'),
+                tracks_per_frame=tc.get('tracks_per_frame'), runtime_s=tc.get('runtime_s'), version=tc.get('version'))
+            calib['status'] = tc.get('status')
+            calib['exposure_scale'] = float(tm.exposure_scale)
         _log(prm, f'calib ({T["calib_s"]:.0f}s): offset {calib["offset_ms"]:+.2f} ms, readout {calib["readout_ms"]:.3f} ms '
                   f'(meta {calib["readout_meta_ms"]:.3f}), focal x{tm.focal_scale:.4f}, ext {np.round(calib["extrinsic_deg"], 3)}')
         pg('calibration', 1.0, 'calibration done')
@@ -1513,8 +1627,27 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                 solver['s'] = None
                 _trim()
 
+        crop_ext = None                                 # full-frame fill: per-frame overscan of the crop box
+        overscan_info = None
+        if prm.fill_overscan and prm.fill_overscan > 0:
+            from .fill import FillParams, coverage_overscan, overscan_px
+            cap = overscan_px(tel.width, tel.height, prm.fill_overscan)
+            if prm.fill_overscan_mode == 'coverage':
+                seg_id = np.zeros(F, np.int64)
+                for i_, (a_, b_) in enumerate(tel.segments or []):
+                    seg_id[int(a_):int(b_) + 1] = i_
+                crop_ext, overscan_info = coverage_overscan(q_fn, tel.frame_t[frames], lens, tel.width, tel.height, cap,
+                                                            segments=seg_id,
+                                                            prm=FillParams(**(prm.fill_overrides or {})))
+            else:
+                crop_ext = np.full((F, 4), cap)
+                overscan_info = dict(cap_px=cap, mode='uniform')
+            overscan_info['mode'] = prm.fill_overscan_mode
+            _log(prm, f'fill overscan ({prm.fill_overscan_mode}, cap {cap:.0f} px): mean [l,t,r,b] '
+                      f'{np.round(crop_ext.reshape(F, 4, -1).mean(axis=(0, 2)), 1).tolist()} px')
+
         def optimize(qf, fx0, stage='path', lo=0.0, hi=1.0):
-            sp = _smooth_params(prm, fx0, tm, tel, pg, stage, lo, hi)
+            sp = _smooth_params(prm, fx0, tm, tel, pg, stage, lo, hi, crop_extend=crop_ext)
             rec = getattr(qf, 'recipe', None)
             res_ = None
             if use_proc and solver['ok'] and rec is not None and rec[0] is tm:
@@ -1615,7 +1748,7 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
                        n_pairs_measured=int(dn['measured'].sum()),
                        smooth=dict(runtime_s=info['runtime_s'], frac_binding=info['frac_binding'],
                                    max_violation_px=info['max_violation_px'], max_zoom=info['max_zoom'],
-                                   n_frames_violating=info['n_frames_violating']))
+                                   n_frames_violating=info['n_frames_violating'], horizon=info.get('horizon')))
             if prm.save_iter_plans:
                 write_plan(os.path.join(out_dir, f'plan_iter{i}.spplan'), plan)
             if i == 0:
@@ -1757,6 +1890,29 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
         pg('final', 1.0, 'final plan ready')
         plan.meta.update(dict(video=os.path.abspath(video)))
 
+        # ---- parallax-aware mesh residual (mesh.py): the HF non-rigid residual, baked into the plan
+        mesh_rep = None
+        if prm.mesh_residual and F >= 30:
+            pg('mesh', 0.0, 'mesh residual')
+            tmsh = time.perf_counter()
+            try:
+                from .mesh import MeshParams, build_mesh
+                mp = MeshParams(**(prm.mesh_overrides or {}))
+                mesh, mesh_rep = build_mesh(plan, stream, frames, _render_stream, fs, mp, executor=pool,
+                                            cancel=pg.cancel_fn, progress=lambda f_, m_: pg('mesh', f_, m_),
+                                            segments=tel.segments, log=lambda m_: _log(prm, m_))
+                mesh_rep.pop('_meas', None)
+                if np.any(mesh):
+                    plan.mesh = mesh
+                    plan.meta['mesh_clamp_px'] = float(mp.clamp_px * plan.out_w / 1920.0)
+            except (InterruptedError, AnalysisCancelled):
+                raise
+            except Exception as e:  # never lose an analysis to the mesh stage: the rotation plan stands
+                mesh_rep = dict(error=repr(e))
+                _log(prm, f'mesh residual failed: {e!r}')
+            T['mesh_s'] = time.perf_counter() - tmsh
+            pg('mesh', 1.0, 'mesh residual done')
+
         # ---- independent quality report (eval's estimator on the original vs the final plan)
         quality = None
         _trim()
@@ -1789,10 +1945,40 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             final=float(np.sqrt(np.mean(h_best ** 2))) if h_best is not None else None,
             note='the closed loop grading itself (optimistic); use stabilized_* for the honest number')
 
+        # ---- full-frame border fill (optional)
+        fill_tab = None
+        fill_rep = None
+        if prm.fill:
+            pg('fill', 0.0, 'border fill sources')
+            tfl = time.perf_counter()
+            try:
+                from .fill import FillParams, compute_fill, output_footprint
+                fprm = FillParams(align=bool(prm.fill_align), **(prm.fill_overrides or {}))
+                fill_tab = compute_fill(plan, video, prm=fprm, progress=lambda f: pg('fill', 0.9 * f, 'fill sources'),
+                                        cancel=pg.cancel_fn, stream=stream)     # the analysis' own decoder
+                recs_fp = np.arange(0, F, max(1, F // 1200))
+                fill_rep = dict(fill_tab.meta.get('stats', {}), select_s=fill_tab.meta.get('select_s'),
+                                align_s=fill_tab.meta.get('align_s'), align=fill_tab.meta.get('align'),
+                                output_footprint_mean=float(output_footprint(plan, recs_fp).mean()),
+                                seconds=round(time.perf_counter() - tfl, 2))
+            except (InterruptedError, AnalysisCancelled):
+                raise
+            except Exception as e:  # never lose an analysis to the fill pass: the plan renders without it
+                fill_tab = None
+                fill_rep = dict(error=repr(e))
+                _log(prm, f'fill pass failed: {e!r}')
+            T['fill_s'] = time.perf_counter() - tfl
+            pg('fill', 1.0, 'fill ready')
+        elif prm.fill_overscan and prm.fill_overscan > 0:
+            fill_rep = dict(warning='fill_overscan without fill: the overscan renders black')
+        if overscan_info is not None:
+            fill_rep = dict(fill_rep or {}, overscan=overscan_info)
+
         # ---- outputs
         pg('write', 0.0, 'writing')
         plan_path = os.path.join(out_dir, 'plan.spplan')
-        write_plan(plan_path, plan)
+        write_plan(plan_path, plan, fill=fill_tab)
+        synth = _write_synth_blur(prm, tel, q_fn, plan, frames, out_dir)
         corr_rv = np.zeros((F, 3))
         for c in incs:
             corr_rv += c.rotvec(ft)
@@ -1833,8 +2019,10 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             zoom=dict(max=float(plan.out_fx.max() / fx0), mean=float(plan.out_fx.mean() / fx0),
                       frac_zoomed=float((plan.out_fx > fx0 * 1.001).mean())),
             smooth=dict(runtime_s=info['runtime_s'], frac_binding=info['frac_binding'],
-                        max_violation_px=info['max_violation_px'], n_frames_violating=info['n_frames_violating']),
-            closed_loop=rep_cl, quality=quality, timings=T, plan=plan_path,
+                        max_violation_px=info['max_violation_px'], n_frames_violating=info['n_frames_violating'],
+                        horizon=info.get('horizon')),
+            closed_loop=rep_cl, quality=quality, timings=T, plan=plan_path, fill=fill_rep, synth_blur=synth,
+            mesh=mesh_rep,
             resources=dict(work_dir=job.dir, frame_buffer_mb=T.get('frame_buffer_mb'),
                            pool_workers=getattr(pool, 'n_workers', 0), plan=rplan,
                            path_solver=dict(process=bool(use_proc and solver['ok']), solves=solver['n'],
@@ -1861,6 +2049,30 @@ def _analyze(video, out_dir, prm: AnalyzeParams, pg: _Progress, job) -> dict:
             stream.close()
         if memw is not None:
             memw.close()
+
+
+def _write_synth_blur(prm: AnalyzeParams, tel: Telemetry, q_fn, plan: Plan, frames: np.ndarray,
+                      out_dir: str) -> Optional[dict]:
+    """AnalyzeParams.synth_blur != 'off': synthetic-shutter schedule for the final plan -> <out_dir>/plan.spblur.
+    Returns a small summary for report.json (never raises: the plan is the deliverable)."""
+    if not prm.synth_blur or prm.synth_blur == 'off':
+        return None
+    try:
+        from .synth_blur import SynthBlurParams, blur_for_plan, write_blur
+        sp_ = SynthBlurParams(mode=prm.synth_blur, kappa=prm.synth_blur_kappa, angle_deg=prm.synth_blur_angle)
+        t0 = time.perf_counter()
+        s = blur_for_plan(tel, q_fn, plan, frames, sp_)
+        path = os.path.join(out_dir, 'plan.spblur')
+        write_blur(path, plan.frame_pts, s, sp_.kappa, sp_.px_step)
+        on = s['n_taps'] > 1
+        return dict(path=path, mode=sp_.mode, kappa=sp_.kappa, angle_deg=sp_.angle_deg, frac_frames=float(on.mean()),
+                    taps_mean=float(s['n_taps'][on].mean()) if on.any() else 0.0,
+                    shutter_ms_mean=float(1e3 * s['shutter_s'][on].mean()) if on.any() else 0.0,
+                    streak_px_p95=float(np.percentile(s['streak_px'], 95)), clamped_frac=float(s['clamped'].mean()),
+                    judder_px_rms=float(np.sqrt(np.mean(s['judder_len'] ** 2))), seconds=time.perf_counter() - t0)
+    except Exception as e:  # noqa: BLE001
+        _log(prm, f'synthetic blur schedule failed: {e!r}')
+        return dict(error=repr(e))
 
 
 def _eval_plan_footprint(plan: Plan, records: np.ndarray) -> np.ndarray:
@@ -1901,6 +2113,14 @@ def _crop_footprint(prm, tel, lens, out_w, out_h, q_fn, optimize, mkplan, stream
     binds lowers the footprint)."""
     F = tel.n_frames
     recs = np.arange(0, F, max(1, min(15, F // 400 or 1)))
+    if prm.fill and prm.fill_overscan and prm.fill_overscan > 0:
+        # fill-backed overscan: the output may leave the source (fill supplies it), so the footprint that matters
+        # is the DISPLAYED field of view = the unclipped footprint (== plan_footprint while inside the source)
+        from .fill import output_footprint as _fp
+        fp_method = 'fill.output_footprint (unclipped = displayed field of view)'
+    else:
+        _fp = _eval_plan_footprint
+        fp_method = 'eval.footprint.plan_footprint'
     guess = lambda a: 1650.0 * math.sqrt(0.58 / a) * (lens.fx / 1405.13) * (out_w / 3840.0)
     target = float(prm.target_footprint) if prm.target_footprint > 0 else None
     if target is None and prm.fov_match:
@@ -1940,7 +2160,7 @@ def _crop_footprint(prm, tel, lens, out_w, out_h, q_fn, optimize, mkplan, stream
     s = 1.0
     for it in range(5):                             # cheap: same path, scaled focal (row matrices unchanged)
         pg.check()
-        a = float(_eval_plan_footprint(replace(pl, out_fx=fx * s), recs).mean())
+        a = float(_fp(replace(pl, out_fx=fx * s), recs).mean())
         trials.append(dict(kind='scaled', fx0=fx0 * s, footprint=a))
         if abs(a - goal) < 3e-4:
             break
@@ -1952,7 +2172,7 @@ def _crop_footprint(prm, tel, lens, out_w, out_h, q_fn, optimize, mkplan, stream
     for it in range(3):                             # re-optimised path at the chosen focal
         pg('crop', 0.4 + 0.18 * it, f'path at fx {fx_try:.1f}')
         v2, fx2, info2 = optimize(q_fn, fx_try, 'crop', 0.4 + 0.18 * it, 0.55 + 0.18 * it)
-        a = float(_eval_plan_footprint(mkplan(q_fn, v2, fx2), recs).mean())
+        a = float(_fp(mkplan(q_fn, v2, fx2), recs).mean())
         trials.append(dict(kind='optimized', fx0=fx_try, footprint=a, max_zoom=info2['max_zoom'],
                            binding=info2['frac_binding']))
         _log(prm, f'crop: fx0 {fx_try:.1f} -> mean footprint {a:.4f} (target {target:.4f} [{source}], goal {goal:.4f})')
@@ -1969,7 +2189,7 @@ def _crop_footprint(prm, tel, lens, out_w, out_h, q_fn, optimize, mkplan, stream
         crop['warning'] = 'target footprint not reached'
     fx0, a, v, fx, info = best
     crop.update(mode='footprint', trials=trials, footprint_mean=a, footprint_goal=goal,
-                footprint_method='eval.footprint.plan_footprint (every %d frames)' % (recs[1] - recs[0] if len(recs) > 1 else 1))
+                footprint_method=fp_method + ' (every %d frames)' % (recs[1] - recs[0] if len(recs) > 1 else 1))
     return fx0, v, fx, info
 
 
@@ -2039,13 +2259,16 @@ def _json_default(o):
 
 def render(video: str, plan_path: str, out_path: str, start_frame: int = 0, n_frames: Optional[int] = None,
            codec: str = 'hevc10', zero_base: bool = True, kernel: str = 'lanczos3', extra: tuple = (),
-           quiet: bool = True) -> dict:
+           quiet: bool = True, blur: Optional[str] = None) -> dict:
     """Render with the Metal renderer (app/renderer/.build/sprender). zero_base: output starts at t=0
-    (deliverables people watch); False keeps the source timestamps (empty edit at the start)."""
+    (deliverables people watch); False keeps the source timestamps (empty edit at the start).
+    blur: a .spblur synthetic-shutter sidecar (AnalyzeParams.synth_blur) -> sprender --blur."""
     if not os.path.exists(SPRENDER):
         raise FileNotFoundError(f'{SPRENDER} missing: run app/renderer/build.sh')
     cmd = [SPRENDER, video, plan_path, out_path, '--start-frame', str(int(start_frame)), '--codec', codec,
            '--kernel', kernel]
+    if blur:
+        cmd += ['--blur', blur]
     if n_frames:
         cmd += ['--frames', str(int(n_frames))]
     if zero_base:

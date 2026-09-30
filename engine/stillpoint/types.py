@@ -54,6 +54,8 @@ class TimeModel:
     Row time used everywhere:  t(k, y) = frame_t[k]*(1+skew) + offset_s + readout_s*((y+0.5)/H - 0.5)
     Camera orientation used:   q_cam(t) = imu_orientation(t) * qexp(extrinsic_rotvec)   (right-multiply,
                                i.e. a fixed IMU->camera misalignment expressed in the camera frame)
+    Row orientation in the plan: averaged over exposure_scale * plan_build.exposure_avg_window(e) around t(k, y)
+                               (timecal fits exposure_scale on long exposures; 1 = the physical exposure box).
     """
     offset_s: float = 0.0
     skew: float = 0.0
@@ -61,6 +63,7 @@ class TimeModel:
     focal_scale: float = 1.0                # multiplies lens.fx/fy
     extrinsic_rotvec: np.ndarray = field(default_factory=lambda: np.zeros(3))
     notes: dict = field(default_factory=dict)
+    exposure_scale: float = 1.0             # multiplies the per-row exposure-averaging window (plan_build)
 
 
 @dataclass
@@ -81,6 +84,10 @@ class Plan:
     row_mats: np.ndarray              # (F, n_rows, 3, 3) float64 in memory, float32 on disk
     virt_q: np.ndarray                # (F,4) virtual camera->world orientation (for diagnostics)
     meta: dict = field(default_factory=dict)
+    mesh: Optional[np.ndarray] = None  # (F, ny, nx, 2) optional mesh-residual offsets (full-res OUTPUT px, float32):
+                                       # output pixel X is displaced by the bilinear offset D(X) before the rotation
+                                       # mapping (engine/stillpoint/mesh.py; vertex (i,j) at i*(out_w-1)/(nx-1),
+                                       # j*(out_h-1)/(ny-1)). None = rotation-only plan.
 
     @property
     def n_rows(self) -> int:

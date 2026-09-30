@@ -87,6 +87,18 @@ OA4_FRAME_CENTER_OFFSET_S = -0.0008   # picture (centre row, mid-exposure) relat
 # research/notes/oa4_0012_timing_diagnosis.md. The two measurements disagree at 1/61 s, so the picture offset is
 # c_pic(e) = OA4_FRAME_CENTER_OFFSET_S + OA4_SHORT_SHUTTER_EXTRA_S * w(e), w = 1 for e <= 4.6 ms, 0 at e >= 1/61 s,
 # linear in between (UNVALIDATED between 4.6 and 16.4 ms: flagged in the warnings).
+# 1/61 s re-check with the same three-frame-delta fit (timecal.py, 2026-09-29, tracks of the whole 0005 / 0006 clips,
+# ISO 12800 indoor handheld): 0006 -0.14 +- 0.06 ms relative to the -0.8 ms constant (i.e. it holds; the short-shutter
+# value would be +0.92), 0005 -2.6 +- 0.14 ms (consistent over the clip, but its row-slope jello proxy does not
+# improve at that offset: a clip-specific lag, e.g. motion-adaptive temporal NR at ISO 12800). Kept as is; per-clip
+# timecal applies a correction when it is confident. Rows at 1/61 s must be exposure-box averaged (plan_build): with
+# instantaneous rows the RS correction made the 0005 jello proxy WORSE than no RS correction (skew 0.63 vs 0.58 px),
+# with the box it is better (0.56; 0006: 0.63 none -> 0.40 instantaneous -> 0.36 box).
+# timecal v2 (box width fitted per clip, 3 windows of each whole clip): 0006 box x1.38, offset -0.19 ms (delta cost
+# -0.9 %, all 3 held-out windows better); 0005 cost minimum at box x2.5-3 with offset -3.9..-4.5 ms (jello proxy
+# skew/stretch 0.53/0.50 at x1 -> 0.41/0.46; the ORIGINAL 0.56/0.52): the 0005 picture behaves as if averaged over
+# ~3 frames and ~4 ms late -- motion-adaptive temporal noise reduction at ISO 12800 on a slow pan is the likely
+# cause, i.e. a per-clip property, not a timing constant. Hence per-clip calibration, no constant change here.
 OA4_SHORT_SHUTTER_EXTRA_S = 0.00092
 OA4_SHORT_SHUTTER_MAX_S = 0.0046      # longest exposure the short-shutter offset was measured at
 OA4_LONG_SHUTTER_S = 1.0 / 61.0       # exposure of the 0005/0006 calibration

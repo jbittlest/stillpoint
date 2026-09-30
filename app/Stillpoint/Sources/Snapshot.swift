@@ -30,6 +30,7 @@ enum Snapshot {
             Footage.o3("DJI_0025.MP4"),
             Footage.oa4("DJI_20260926153751_0005_D.MP4"),
             Footage.oa4("DJI_20260925151130_0003_D.MP4"),
+            Footage.oa4("DJI_20260925151512_0004_D.MP4"),
             Footage.oa4("DJI_20260926155953_0007_D.MP4"),
         ].compactMap { p -> URL? in       // Desktop copy, else the same file on the SD card (read-only)
             let sd = Footage.sdDir + "/" + (p as NSString).lastPathComponent
@@ -68,12 +69,12 @@ enum Snapshot {
             model.player.settings = s
             model.snapshotFrame = frame(c, t, s)
         }
-        func render(_ name: String) {
+        func render(_ name: String, height: CGFloat = 900) {
             let view = MainView()
                 .environmentObject(model)
                 .environment(\.snapshotMode, true)
                 .environment(\.colorScheme, .dark)
-                .frame(width: 1480, height: 900)
+                .frame(width: 1480, height: height)
             let r = ImageRenderer(content: view)
             r.scale = scale
             r.isOpaque = true
@@ -182,6 +183,40 @@ enum Snapshot {
         render("09_settings_changed_exports.png")
         heroClip.smoothness = heroClip.manifest?.params.smoothness ?? 1
         model.exports.removeAll()
+        // 11-14. engine v5 options (taller window so the whole inspector shows)
+        func resetOptions(_ c: Clip) {
+            if let m = c.manifest { c.applyParams(m.params) } else { c.applyDefaults(c.probe?.options) }
+        }
+        // 11. a v5 analysis with Full-frame fill: the preview at its most-filled frame, the timing readout
+        if let fc = model.clips.first(where: { $0.plan?.hasFill == true }), let plan = fc.plan {
+            model.selectedID = fc.id
+            let r = (0..<plan.count).max { plan.fillFraction($0) < plan.fillFraction($1) } ?? 0
+            setPlayer(fc, plan.pts[r], after)
+            print("snapshot fill frame \(r) (\(plan.fillFraction(r) * 100)% synthesised)")
+            render("11_fill_analysis_preview.png", height: 1240)
+            setPlayer(fc, plan.pts[r], split)
+            render("11b_fill_split.png")
+        }
+        // 12. options on an O3 clip: horizon lock with strength + bank limit, fill on (Max quality disabled + hint)
+        model.selectedID = heroClip.id
+        setPlayer(heroClip, heroTime, after)
+        heroClip.horizonLock = true; heroClip.horizonStrength = 0.8; heroClip.rollLimitDeg = 15
+        heroClip.fill = true; heroClip.maxQuality = false
+        render("12_options_horizon_fill.png", height: 1240)
+        // 13. Max quality on (fill disabled + hint), horizon lock off
+        heroClip.horizonLock = false; heroClip.fill = false; heroClip.maxQuality = true
+        render("13_options_max_quality.png", height: 1240)
+        resetOptions(heroClip)
+        // 14. an O4 Pro clip: the engine's "not reliable on O4 Pro yet" note under horizon lock
+        let o4s = model.clips.filter { $0.probe?.cameraName.contains("O4 Pro") == true && $0.note("horizon") != nil }
+        if let o4 = o4s.first(where: { $0.isAnalyzed }) ?? o4s.first {
+            model.selectedID = o4.id
+            setPlayer(o4, min(heroTime, (o4.probe?.durationS ?? 4) / 2), o4.isAnalyzed ? after : before)
+            o4.horizonLock = true
+            render("14_o4_horizon_note.png", height: 1240)
+            resetOptions(o4)
+        }
+        model.selectedID = heroClip.id
         // 10. empty state
         let empty = AppModel(headless: true)
         let v = MainView().environmentObject(empty).environment(\.snapshotMode, true).environment(\.colorScheme, .dark)

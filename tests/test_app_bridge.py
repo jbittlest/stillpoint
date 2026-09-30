@@ -24,8 +24,8 @@ ENV = dict(os.environ, PYTHONPATH=os.path.join(ROOT, 'engine'))
 needs_clip = pytest.mark.skipif(not os.path.exists(CLIP), reason='DJI_0026 not available')
 
 
-def run_bridge(args, **kw):
-    return subprocess.run([PY, '-m', 'stillpoint.app_bridge', *args], capture_output=True, text=True, env=ENV,
+def run_bridge(args, env=None, **kw):
+    return subprocess.run([PY, '-m', 'stillpoint.app_bridge', *args], capture_output=True, text=True, env=env or ENV,
                           cwd=ROOT, stdin=subprocess.DEVNULL, **kw)
 
 
@@ -483,3 +483,205 @@ def test_analyze_with_work_dir_env_keeps_scratch_out_of_out_dir(tmp_path):
     for sub in ('tmp', 'jobs'):
         if (wd / sub).exists():
             assert os.listdir(wd / sub) == [], sub
+
+
+# ---------------------------------------------------------------------------------------------- engine v5 options
+#                                                                                                  (app6, 2026-09-30)
+
+
+def test_option_defaults_come_from_the_engine(monkeypatch):
+    """The app's option defaults are AnalyzeParams' own, overridden per camera only by CAMERA_OPTION_DEFAULTS."""
+    from stillpoint.pipeline import AnalyzeParams
+    p = AnalyzeParams()
+    d = ab.option_defaults('DJI Osmo Action 4')                  # no per-camera entry: the engine's own defaults
+    assert d['fill'] is bool(p.fill) and d['mesh'] is bool(p.mesh_residual) and d['timecal'] is bool(p.timecal)
+    assert d['horizon_lock'] == float(p.horizon_lock) and d['roll_limit_deg'] == float(p.roll_limit_deg)
+    assert d['horizon_strength'] == (d['horizon_lock'] or ab.HORIZON_STRENGTH_ON)
+    assert d['fill_overscan'] == (float(p.fill_overscan) or ab.FILL_OVERSCAN_ON)
+    monkeypatch.setattr(ab, 'CAMERA_OPTION_DEFAULTS', {'DJI O3': {'fill': True, 'horizon_lock': 0.7, 'roll_limit_deg': 12}})
+    o3, o4 = ab.option_defaults('DJI O3 (FC8383)'), ab.option_defaults('DJI O4 Pro')
+    assert o3['fill'] is True and o3['horizon_lock'] == 0.7 and o3['horizon_strength'] == 0.7 and o3['roll_limit_deg'] == 12
+    assert o4 == d                                               # other cameras keep the engine defaults
+    assert ab.option_defaults(None) == d
+
+
+def test_camera_defaults_follow_the_gate():
+    """gate v6 (work/gate/v6/decision.md): fill on for the DJI O3 only; mesh and horizon lock off everywhere."""
+    o3 = ab.option_defaults('DJI O3 (FC8383)')
+    assert o3['fill'] is True and o3['fill_overscan'] == 0.06 and o3['mesh'] is False and o3['horizon_lock'] == 0.0
+    for cam in ('DJI Osmo Action 4', 'DJI O4 Pro', None):
+        d = ab.option_defaults(cam)
+        assert d['fill'] is False and d['mesh'] is False and d['horizon_lock'] == 0.0 and d['timecal'] is True
+    r = ab.resolve_options(types.SimpleNamespace(), 'DJI O3 (FC8383)')
+    assert (r['fill'], r['fill_overscan'], r['mesh']) == (True, 0.06, False)
+    r = ab.resolve_options(types.SimpleNamespace(fill=False, mesh=True), 'DJI O3 (FC8383)')    # Max quality on O3
+    assert (r['fill'], r['fill_overscan'], r['mesh']) == (False, 0.0, True)
+    # mesh costs ~26-34 ms/frame: x1.3-1.5 on the O3's heavy default, x5-7 on OA4 / O4 Pro
+    assert ab.time_factors('DJI O3 (FC8383)')['mesh'] < 2 < ab.time_factors('DJI Osmo Action 4')['mesh']
+    assert ab.time_factors('DJI O4 Pro')['mesh'] > 4
+
+
+def test_cli_analyze_uses_the_camera_defaults(monkeypatch):
+    """`stillpoint.cli analyze` resolves options not given exactly like the app (app_bridge.resolve_for_video)."""
+    from stillpoint import cli, pipeline
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def fake(video, out, prm, progress=None):
+        seen.append(prm)
+        raise Stop
+    monkeypatch.setattr(pipeline, 'analyze', fake)
+    monkeypatch.setattr(ab, '_camera_for', lambda v: 'DJI O3 (FC8383)')
+    for argv, want in ((['analyze', 'x.mp4', '--out', 'o', '-q'], (True, 0.06, False)),
+                       (['analyze', 'x.mp4', '--out', 'o', '-q', '--no-fill', '--mesh'], (False, 0.0, True)),
+                       (['analyze', 'x.mp4', '--out', 'o', '-q', '--no-timecal'], (True, 0.06, False))):
+        with pytest.raises(Stop):
+            cli.main(argv)
+        assert (seen[-1].fill, seen[-1].fill_overscan, seen[-1].mesh_residual) == want
+    assert seen[0].timecal is True and seen[-1].timecal is False and seen[0].horizon_lock == 0.0
+    monkeypatch.setattr(ab, '_camera_for', lambda v: 'DJI O4 Pro')
+    with pytest.raises(Stop):
+        cli.main(['analyze', 'x.mp4', '--out', 'o', '-q'])
+    assert (seen[-1].fill, seen[-1].mesh_residual) == (False, False)
+
+
+def test_option_info_support_notes_and_exclusivity(monkeypatch):
+    from stillpoint import pipeline
+    o4 = ab.option_info('DJI O4 Pro', gravity=True)
+    assert set(o4) >= {'defaults', 'supported', 'exclusive', 'notes', 'ranges', 'time_factor'}
+    assert 'O4 Pro' in o4['notes']['horizon'] and o4['supported']['horizon'] is True
+    o3 = ab.option_info('DJI O3 (FC8383)', gravity=True)
+    assert o3['notes'] == {} and o3['ranges']['roll_limit_deg'] == [0.0, 45.0]
+    assert ab.option_info('DJI O3 (FC8383)', gravity=False)['supported']['horizon'] is False
+    assert ['fill', 'mesh'] in o3['exclusive']                    # pipeline.check_params refuses fill + mesh today
+    assert o3['time_factor']['mesh'] > 1.0
+    for k in list(o3['supported']) + list(o3['notes']) + list(o3['time_factor']):   # single-word keys (Swift decoder)
+        assert '_' not in k
+    monkeypatch.setattr(pipeline, 'check_params', lambda prm: None)      # the engine lifts the restriction
+    assert ab.exclusive_pairs() == []
+
+
+def test_resolve_options_tristate():
+    d = ab.option_defaults(None)
+    ns = types.SimpleNamespace
+    r = ab.resolve_options(ns(), None)                               # nothing given: the defaults
+    assert (r['fill'], r['mesh'], r['horizon_lock'], r['timecal']) == (d['fill'], d['mesh'], d['horizon_lock'], d['timecal'])
+    assert r['fill_overscan'] == (d['fill_overscan'] if d['fill'] else 0.0)
+    r = ab.resolve_options(ns(fill=True, mesh=False, horizon_lock=0.6, roll_limit=15.0, timecal=False), None)
+    assert (r['fill'], r['fill_overscan'], r['mesh'], r['horizon_lock'], r['roll_limit_deg'], r['timecal']) == \
+        (True, ab.FILL_OVERSCAN_ON, False, 0.6, 15.0, False)
+    assert ab.resolve_options(ns(horizon_lock=False), None)['horizon_lock'] == 0.0     # old callers: bool
+    assert ab.resolve_options(ns(no_timecal=True), None)['timecal'] is False           # old namespace field
+    assert ab.resolve_options(ns(fill=True, fill_overscan=0.03), None)['fill_overscan'] == 0.03
+
+
+def test_analyze_parser_flags():
+    ap = ab.build_parser()
+    a = ap.parse_args(['analyze', 'c.mp4', '--out', 'o', '--fill', '--no-mesh', '--horizon-lock', '--roll-limit', '10',
+                       '--no-timecal', '--dry-run'])
+    assert (a.fill, a.mesh, a.horizon_lock, a.roll_limit, a.timecal, a.dry_run) == (True, False, 1.0, 10.0, False, True)
+    a = ap.parse_args(['analyze', 'c.mp4', '--out', 'o'])
+    assert (a.fill, a.mesh, a.horizon_lock, a.roll_limit, a.timecal, a.synth_blur) == (None,) * 6
+    assert ap.parse_args(['analyze', 'c.mp4', '--out', 'o', '--horizon-lock', '0.4']).horizon_lock == 0.4
+
+
+def test_native_stage_mapping_mesh_and_fill(monkeypatch):
+    """The mesh / fill stages of a v5 analysis stay on the Vision step (not back to Gyro) with their own message."""
+    out = []
+    monkeypatch.setattr(ab, 'emit', out.append)
+    np_ = ab._NativeProgress(ab.Progress([('telemetry', 'T', 1.0)], min_interval=0.0), 3)
+    np_('mesh', 0.8, 'mesh: tracking 120/268')
+    assert out[-1]['stage'] == 'measure' and 'Max quality' in out[-1]['message']
+    np_('fill', 0.9, 'fill: selecting')
+    assert out[-1]['stage'] == 'measure' and 'Full-frame fill' in out[-1]['message']
+    np_('measure1', 0.5, 'measuring pass 1: 812/2964 pairs')
+    assert out[-1]['message'] == 'pass 2 of 3 · 812/2964 frames'
+
+
+def _tc_report(**tc):
+    return dict(params=dict(timecal=True), calibration=dict(readout_meta_ms=11.0, timecal=tc))
+
+
+def test_timecal_summary_states():
+    assert ab.timecal_summary(dict(params=dict(smoothness=1.0), calibration={})) is None        # pre-v5 analysis
+    assert ab.timecal_summary(dict(params=dict(timecal=False), calibration={}))['state'] == 'off'
+    assert ab.timecal_summary(dict(params=dict(timecal=True), calibration={}))['state'] == 'skipped'  # no high-rate gyro
+    none = dict(offset_ms=0.0, readout_s=None, focal_scale=1.0, exposure_slope=0.0, exposure_scale=1.0)
+    # DJI_0034 (v5): -0.017 +- 0.041 ms, not applied -> the metadata timing is confirmed
+    s = ab.timecal_summary(_tc_report(status='ok', applied=none, estimate=dict(offset_ms=-0.0173),
+                                      sigma=dict(offset_ms=0.0406), decision=dict(reasons=['not worth it'])))
+    assert s['state'] == 'confirmed' and s['estimate_ms'] == -0.0173 and s['sigma_ms'] == 0.0406 and s['detail'] == 'not worth it'
+    # injected +0.92 ms error (merge verification): recovered and applied
+    s = ab.timecal_summary(_tc_report(status='ok', applied=dict(none, offset_ms=0.928), estimate=dict(offset_ms=0.928),
+                                      sigma=dict(offset_ms=0.005)))
+    assert s['state'] == 'applied' and s['offset_ms'] == 0.928
+    s = ab.timecal_summary(_tc_report(status='ok', applied=dict(none, readout_s=0.0111), estimate=dict(offset_ms=0.0),
+                                      sigma=dict(offset_ms=0.01)))
+    assert s['state'] == 'applied' and abs(s['readout_pct'] - 0.909) < 0.01 and s['offset_ms'] == 0.0
+    # a fitted offset the engine did not trust: the metadata timing was KEPT, not confirmed
+    s = ab.timecal_summary(_tc_report(status='ok', applied=none, estimate=dict(offset_ms=0.31), sigma=dict(offset_ms=0.02),
+                                      decision=dict(reasons=['held-out folds do not confirm it'])))
+    assert s['state'] == 'kept' and 'held-out' in s['detail']
+    assert ab.timecal_summary(_tc_report(status='skipped: in-camera EIS baked into the picture'))['state'] == 'skipped'
+    assert ab.timecal_summary(_tc_report(status="failed: ValueError('x')"))['state'] == 'failed'
+    assert ab.timecal_summary(_tc_report(status='no window with enough rotation'))['state'] == 'kept'
+
+
+def test_fill_mesh_horizon_summaries():
+    rep = dict(fill=dict(frac_frames_filled=0.033, fill_frac_mean=0.0004, fill_frac_max=0.051, max_offset=10),
+               mesh=dict(offset_rms_1080=0.21, offset_max_1080=2.97, verify=dict(accepted_frac=0.98)),
+               smooth=dict(horizon=dict(strength=1.0, roll_limit_deg=0.0, frac_full_level=0.68, frac_off=0.0)))
+    assert ab.fill_summary(rep)['frames_frac'] == 0.033 and ab.fill_summary(rep)['max_offset'] == 10
+    assert ab.mesh_summary(rep) == dict(offset_rms_px=0.21, offset_max_px=2.97, accepted_frac=0.98)
+    assert ab.horizon_summary(rep)['full_level_frac'] == 0.68
+    off = dict(fill=None, mesh=None, smooth=dict(horizon=None))
+    assert ab.fill_summary(off) is None and ab.mesh_summary(off) is None and ab.horizon_summary(off) is None
+    assert ab.mesh_summary(dict(mesh=dict(error='boom')))['error'] == 'boom'
+
+
+def test_summary_carries_v5_blocks(monkeypatch):
+    tel = types.SimpleNamespace(fps=59.94, n_frames=10, width=3840, height=2160, camera='DJI O3', frame_t=np.zeros(10))
+    monkeypatch.setattr('stillpoint.telemetry.load_telemetry', lambda *a, **k: tel)
+    rep = dict(out=dict(w=3840, h=2160, min_out_fx=1611.0, hfov_deg=100.0), closed_loop={}, params=dict(timecal=True),
+               calibration=dict(timecal=dict(status='ok', applied=dict(offset_ms=0.0), estimate=dict(offset_ms=0.01),
+                                             sigma=dict(offset_ms=0.02))),
+               fill=dict(frac_frames_filled=0.1))
+    s = ab.summarize('/nonexistent.mp4', '/nonexistent', rep)
+    assert s['timecal']['state'] == 'confirmed' and s['fill']['frames_frac'] == 0.1 and 'mesh' not in s
+
+
+@needs_clip
+def test_analyze_dry_run_roundtrip(tmp_path):
+    """What the app sends -> the AnalyzeParams the engine would run and the manifest params the app reads back."""
+    out = tmp_path / 'never'
+    r = run_bridge(['analyze', CLIP, '--out', str(out), '--fov', '104', '--horizon-lock', '0.6', '--roll-limit', '15',
+                    '--fill', '--no-mesh', '--dry-run'], env=dict(ENV, STILLPOINT_ANALYSIS_WORKERS='3'))
+    assert r.returncode == 0, r.stderr[-2000:]
+    res = events(r.stdout)[-1]
+    assert res['type'] == 'result' and res['dry_run'] is True
+    p, ap = res['params'], res['analyze_params']
+    assert (p['horizon_lock'], p['horizon_strength'], p['roll_limit_deg'], p['fill'], p['fill_overscan'], p['mesh'],
+            p['fov_deg']) == (True, 0.6, 15.0, True, ab.FILL_OVERSCAN_ON, False, 104.0)
+    assert (ap['horizon_lock'], ap['roll_limit_deg'], ap['fill'], ap['fill_overscan'], ap['mesh_residual']) == \
+        (0.6, 15.0, True, ab.FILL_OVERSCAN_ON, False)
+    assert ap['processes'] == 3 and ap['max_workers_measure'] == 3
+    assert not out.exists()                                        # a dry run writes nothing
+    r = run_bridge(['analyze', CLIP, '--out', str(out), '--fill', '--mesh', '--dry-run'])
+    ev = events(r.stdout)
+    assert r.returncode == 1 and ev[-1]['type'] == 'error' and ev[-1]['code'] == 'bad_args'
+    r = run_bridge(['analyze', CLIP, '--out', str(out), '--horizon-lock', '1.5', '--dry-run'])
+    assert r.returncode == 1 and events(r.stdout)[-1]['code'] == 'bad_args'
+    r = run_bridge(['analyze', CLIP, '--out', str(out), '--dry-run'])      # no flags: the camera defaults
+    p = events(r.stdout)[-1]['params']
+    d = ab.option_defaults('DJI O3')
+    assert (p['fill'], p['mesh'], p['horizon_strength'], p['timecal']) == (d['fill'], d['mesh'], d['horizon_lock'], d['timecal'])
+
+
+@needs_clip
+def test_probe_reports_options():
+    p = events(run_bridge(['probe', CLIP]).stdout)[-1]
+    o = p['options']
+    assert o['defaults'] == ab.option_defaults(p['camera'])
+    assert o['supported']['horizon'] is p['horizon_lock_supported'] and ['fill', 'mesh'] in o['exclusive']

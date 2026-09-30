@@ -267,6 +267,10 @@ struct SPRing: View {
     }
 }
 
+extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
 extension Comparable {
     func clamped(_ lo: Self, _ hi: Self) -> Self { min(max(self, lo), hi) }
 }
@@ -361,6 +365,12 @@ enum Fmt {
         if w >= 2600 { return "2.7K" }
         if w >= 1900 { return "1080p" }
         return "\(w)×\(h)"
+    }
+    /// A fraction as a percentage: "3%", "0.4%" below 1 %, "<0.1%" for tiny non-zero values.
+    static func pct(_ f: Double) -> String {
+        let p = f * 100
+        if p > 0 && p < 0.1 { return "<0.1%" }
+        return p < 1 && p > 0 ? String(format: "%.1f%%", p) : "\(Int(p.rounded()))%"
     }
     static func fps(_ f: Double) -> String {
         abs(f - f.rounded()) < 0.01 ? String(format: "%.0f fps", f) : String(format: "%.2f fps", f)

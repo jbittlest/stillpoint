@@ -486,11 +486,18 @@ struct VideoStage: View {
                 }
                 .offset(x: x - 17, y: rect.midY - 17)
                 pill("ORIGINAL", dot: nil).offset(x: rect.minX + 14, y: rect.minY + 14)
-                pill("STILLPOINT", dot: Theme.accent)
-                    .frame(width: 140, alignment: .trailing)
-                    .offset(x: rect.maxX - 154, y: rect.minY + 14)
+                VStack(alignment: .trailing, spacing: 6) {
+                    pill("STILLPOINT", dot: Theme.accent)
+                    fillPill
+                }
+                .frame(width: 240, alignment: .trailing)
+                .offset(x: rect.maxX - 254, y: rect.minY + 14)
             } else if mode == .after {
-                pill("STABILIZED", dot: Theme.accent).offset(x: rect.minX + 14, y: rect.minY + 14)
+                HStack(spacing: 6) {
+                    pill("STABILIZED", dot: Theme.accent)
+                    fillPill
+                }
+                .offset(x: rect.minX + 14, y: rect.minY + 14)
             } else {
                 let unsupported = clip.probe?.supported == false
                 pill(player.hasPlan || unsupported ? "ORIGINAL" : "ORIGINAL · NOT ANALYZED", dot: nil)
@@ -515,6 +522,21 @@ struct VideoStage: View {
             }
         }
         .allowsHitTesting(false)
+    }
+
+    /// Fill plans: paused frames are the exported frame (neighbouring frames decoded); while playing, only cached
+    /// neighbours are used and the rest of the border is the kernel's soft edge -- say so, never show black corners.
+    @ViewBuilder private var fillPill: some View {
+        if player.planHasFill {
+            HStack(spacing: 5) {
+                Image(systemName: "rectangle.dashed").font(.system(size: 9, weight: .bold))
+                Text(player.isPlaying ? "FILL · EXACT WHEN PAUSED" : "FULL-FRAME FILL").font(.system(size: 10, weight: .semibold)).tracking(1.0)
+            }
+            .foregroundStyle(.white.opacity(0.75))
+            .padding(.horizontal, 9).padding(.vertical, 5)
+            .background(Capsule().fill(Color.black.opacity(0.45)))
+            .fixedSize()
+        }
     }
 
     private func pill(_ text: String, dot: Color?) -> some View {

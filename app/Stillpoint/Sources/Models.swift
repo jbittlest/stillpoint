@@ -80,7 +80,12 @@ final class Clip: ObservableObject, Identifiable {
     @Published var progress: BridgeProgress?
     @Published var smoothness: Double = 1.0
     @Published var fovDeg: Double = 100
+    // engine v5 options (start values: the engine's per-camera defaults from probe, or the cached analysis')
     @Published var horizonLock = false
+    @Published var horizonStrength: Double = 1.0
+    @Published var rollLimitDeg: Double = 0
+    @Published var fill = false
+    @Published var maxQuality = false          // mesh residual
     /// Seconds since the running analysis last reported progress (published once it passes the stall threshold).
     @Published var stallSeconds = 0
     /// CPU activity of the engine's process group over the last few seconds (nil = not sampled yet).
@@ -95,6 +100,7 @@ final class Clip: ObservableObject, Identifiable {
     var runStartedAt: Date?
     var lastProgressAt: Date?
     var runEstimate: Double?
+    var runFactor: Double = 1
 
     init(url: URL) { self.url = url }
 
@@ -126,10 +132,93 @@ final class Clip: ObservableObject, Identifiable {
         guard let f = probe?.fov, f.maxDeg > f.minDeg else { return 85...115 }
         return f.minDeg...f.maxDeg
     }
-    var settingsChanged: Bool {
-        guard let m = manifest else { return false }
-        return abs(m.params.smoothness - smoothness) > 0.005 || abs((m.params.fovDeg ?? fovDeg) - fovDeg) > 0.05
-            || m.params.horizonLock != horizonLock
+    var settingsChanged: Bool { !changedSettings.isEmpty }
+    /// The controls that differ from the cached analysis (the "Settings changed" banner names them).
+    var changedSettings: [String] {
+        guard let m = manifest else { return [] }
+        let p = m.params
+        var out: [String] = []
+        if abs(p.smoothness - smoothness) > 0.005 { out.append("Smoothness") }
+        if abs((p.fovDeg ?? fovDeg) - fovDeg) > 0.05 { out.append("Field of view") }
+        let hl = effectiveHorizonLock
+        if p.horizonLock != hl {
+            out.append("Horizon lock")
+        } else if hl {
+            let ms = p.horizonStrength ?? 1.0, mr = p.rollLimitDeg ?? 0
+            if abs(ms - horizonStrength) > 0.005 || abs(mr - rollLimitDeg) > 0.25 { out.append("Horizon lock") }
+        }
+        if (p.fill ?? false) != effectiveFill { out.append("Full-frame fill") }
+        if (p.mesh ?? false) != effectiveMaxQuality { out.append("Max quality") }
+        return out
+    }
+
+    // MARK: engine v5 options
+
+    var options: EngineOptions? { probe?.options }
+    /// (Before the probe has answered, a cached analysis' settings are taken as valid.)
+    var horizonSupported: Bool {
+        guard let p = probe else { return true }
+        return p.options.map { $0.isSupported("horizon") } ?? (p.horizonLockSupported ?? false)
+    }
+    var fillSupported: Bool { probe == nil || (options?.isSupported("fill") ?? false) }
+    var meshSupported: Bool { probe == nil || (options?.isSupported("mesh") ?? false) }
+    /// Per-camera caveat for an option (e.g. horizon lock on the O4 Pro), from the engine.
+    func note(_ option: String) -> String? { options?.notes?[option] }
+    /// Why an option cannot be switched on now (the engine cannot combine it with one that is on), else nil.
+    var fillBlockedBy: String? {
+        maxQuality && (options?.excludes("fill", "mesh") ?? true) ? "Max quality" : nil
+    }
+    var maxQualityBlockedBy: String? {
+        fill && (options?.excludes("fill", "mesh") ?? true) ? "Full-frame fill" : nil
+    }
+    /// What an analysis started now would use.
+    var effectiveHorizonLock: Bool { horizonLock && horizonSupported }
+    var effectiveFill: Bool { fill && fillSupported }
+    var effectiveMaxQuality: Bool { maxQuality && meshSupported && !(effectiveFill && (options?.excludes("fill", "mesh") ?? true)) }
+
+    /// Start values from the engine's defaults for this camera (a clip without a cached analysis).
+    func applyDefaults(_ o: EngineOptions?) {
+        guard let d = o?.defaults else { return }
+        let strength = d.horizonLock ?? 0
+        horizonLock = strength > 0
+        horizonStrength = (strength > 0 ? strength : (d.horizonStrength ?? 1)).clamped(o?.strengthRange.lowerBound ?? 0.1, 1)
+        rollLimitDeg = (d.rollLimitDeg ?? 0).clamped(0, o?.rollLimitRange.upperBound ?? 45)
+        fill = d.fill ?? false
+        maxQuality = d.mesh ?? false
+        if fill && maxQuality && (o?.excludes("fill", "mesh") ?? true) { maxQuality = false }   // engine can't do both
+    }
+
+    /// The settings of a cached analysis (fields an older manifest lacks keep their current value).
+    func applyParams(_ p: AnalysisParams) {
+        smoothness = p.smoothness
+        if let f = p.fovDeg { fovDeg = f }
+        horizonLock = p.horizonLock
+        if p.horizonLock, let s = p.horizonStrength, s > 0 { horizonStrength = s }
+        if p.horizonLock, let r = p.rollLimitDeg { rollLimitDeg = r }
+        fill = p.fill ?? false
+        maxQuality = p.mesh ?? false
+    }
+
+    /// Analysis time relative to a run without the options (the engine's factors).
+    var optionTimeFactor: Double {
+        var f = 1.0
+        if effectiveMaxQuality { f *= options?.timeFactor?["mesh"] ?? 1.4 }
+        if effectiveFill { f *= options?.timeFactor?["fill"] ?? 1.0 }
+        return f
+    }
+
+    /// `app_bridge analyze` arguments for the current settings. Every option the app shows is sent explicitly, so
+    /// the analysis runs exactly what the panel says; timecal (no control) is left to the engine's default.
+    var analyzeArgs: [String] {
+        var a = ["analyze", url.path, "--out", analysisDir.path,
+                 "--smoothness", String(format: "%.3f", smoothness), "--fov", String(format: "%.2f", fovDeg)]
+        if options != nil || horizonSupported {      // explicit 0 when unsupported: never the camera default
+            a += ["--horizon-lock", String(format: "%.3f", effectiveHorizonLock ? horizonStrength : 0),
+                  "--roll-limit", String(format: "%.2f", effectiveHorizonLock ? rollLimitDeg : 0)]
+        }
+        if fillSupported { a.append(effectiveFill ? "--fill" : "--no-fill") }
+        if meshSupported { a.append(effectiveMaxQuality ? "--mesh" : "--no-mesh") }
+        return a
     }
     var canAnalyze: Bool { probe?.supported == true && !isBusy }
     /// Time left: the engine's own ETA once it has one, before that the pre-flight estimate minus elapsed time.
@@ -167,7 +256,10 @@ final class ExportJob: ObservableObject, Identifiable {
 
 /// Analysis speed on this Mac: seconds of analysis per second of clip, from the timings of previous runs.
 struct SpeedHistory: Codable {
-    struct Entry: Codable { var durationS: Double; var seconds: Double; var frameCache: Bool?; var date: Date; var clip: String? }
+    struct Entry: Codable {
+        var durationS: Double; var seconds: Double; var frameCache: Bool?; var date: Date; var clip: String?
+        var factor: Double?            // the run's option time factor (Max quality runs are slower by design)
+    }
     var entries: [Entry] = []
     static let defaultRatio = 3.0          // measured on the fixed engine: ~160 s per 50 s O3 clip
     static let overhead = 30.0             // fixed start-up / path / write cost of a run (a 4.5 s clip takes ~45 s)
@@ -184,9 +276,10 @@ struct SpeedHistory: Codable {
         try? FileManager.default.createDirectory(at: EngineConfig.supportRoot, withIntermediateDirectories: true)
         try? d.write(to: EngineConfig.speedHistory, options: .atomic)
     }
-    mutating func add(durationS: Double, seconds: Double, frameCache: Bool?, clip: String) {
+    mutating func add(durationS: Double, seconds: Double, frameCache: Bool?, clip: String, factor: Double = 1) {
         guard durationS > 0, seconds > 0 else { return }
-        entries.append(Entry(durationS: durationS, seconds: seconds, frameCache: frameCache, date: Date(), clip: clip))
+        entries.append(Entry(durationS: durationS, seconds: seconds, frameCache: frameCache, date: Date(), clip: clip,
+                             factor: factor == 1 ? nil : factor))
         if entries.count > 40 { entries.removeFirst(entries.count - 40) }
     }
     /// Timings of earlier analyses on this Mac (report.json of cached analyses made by the current, frame-cache engine
@@ -215,12 +308,12 @@ struct SpeedHistory: Codable {
         let ok = entries.filter { $0.durationS >= Self.minDuration && ($0.frameCache ?? frameCache) == frameCache }
             .suffix(12).sorted { $0.durationS > $1.durationS }.prefix(6)
         guard !ok.isEmpty else { return (Self.defaultRatio, 0) }
-        let r = ok.map { max(0.5, ($0.seconds - Self.overhead) / $0.durationS) }.sorted()
+        let r = ok.map { max(0.5, ($0.seconds - Self.overhead) / max($0.factor ?? 1, 0.1) / $0.durationS) }.sorted()
         return (r[r.count / 2], ok.count)
     }
-    func estimate(duration: Double, frameCache: Bool) -> (Double, Int) {
+    func estimate(duration: Double, frameCache: Bool, factor: Double = 1) -> (Double, Int) {
         let (r, n) = ratio(frameCache: frameCache)
-        return (Self.overhead + r * duration, n)
+        return (Self.overhead + r * duration * factor, n)
     }
 }
 
@@ -406,6 +499,7 @@ final class AppModel: ObservableObject {
                         c.probe = p
                         if c.manifest == nil {
                             c.fovDeg = p.fov?.defaultDeg ?? 100
+                            c.applyDefaults(p.options)
                         }
                         c.fovDeg = c.fovDeg.clamped(c.fovRange.lowerBound, c.fovRange.upperBound)
                     } else {
@@ -458,9 +552,7 @@ final class AppModel: ObservableObject {
         guard let plan = try? PlanFile(url: URL(fileURLWithPath: m.plan)) else { return }
         c.manifest = m
         c.plan = plan
-        c.smoothness = m.params.smoothness
-        if let f = m.params.fovDeg { c.fovDeg = f }
-        c.horizonLock = m.params.horizonLock
+        c.applyParams(m.params)
     }
 
     // MARK: selection / preview
@@ -480,9 +572,10 @@ final class AppModel: ObservableObject {
         let temp = max(p.scratch?.tempBytes ?? 0, cache)
         let minFree = max(p.scratch?.minFreeBytes ?? 0, Self.minFreeBytes)
         let fits = free.map { $0 - cache >= minFree } ?? true
-        let (estimate, n) = speed.estimate(duration: p.durationS, frameCache: cache > 0 && fits)
+        let (estimate, n) = speed.estimate(duration: p.durationS, frameCache: cache > 0 && fits, factor: c.optionTimeFactor)
         var basis = n > 0 ? "from \(n) recent analys\(n == 1 ? "is" : "es") on this Mac"
                           : "30 s + 3× the clip length until this Mac has timed runs"
+        if c.effectiveMaxQuality { basis += "; Max quality adds its extra tracking passes" }
         var items: [Preflight.Item] = []
         if let free {
             if free < minFree {
@@ -557,10 +650,8 @@ final class AppModel: ObservableObject {
         c.stallSeconds = 0
         c.engineBusy = nil
         c.runEstimate = preflight(c)?.estimate
-        var args = ["analyze", c.url.path, "--out", c.analysisDir.path,
-                    "--smoothness", String(format: "%.3f", c.smoothness), "--fov", String(format: "%.2f", c.fovDeg)]
-        if c.horizonLock && (c.probe?.horizonLockSupported ?? false) { args.append("--horizon-lock") }
-        let job = BridgeJob(args)
+        c.runFactor = c.optionTimeFactor
+        let job = BridgeJob(c.analyzeArgs)
         c.job = job
         var failure: (String, String)?
         var cancelled = false
@@ -637,7 +728,7 @@ final class AppModel: ObservableObject {
         guard let m = c.manifest else { return }
         let dur = m.timing?.durationS ?? c.probe?.durationS ?? 0
         let secs = m.timing?.wallS ?? m.seconds ?? 0
-        speed.add(durationS: dur, seconds: secs, frameCache: m.timing?.frameCache, clip: c.name)
+        speed.add(durationS: dur, seconds: secs, frameCache: m.timing?.frameCache, clip: c.name, factor: c.runFactor)
         speed.save()
     }
 

@@ -19,30 +19,62 @@ The conventions (quaternion frames, pixel centres, row timing) are in [`ENGINE_S
 
 ## Results (honest)
 
-The test set is five DJI O3 clips, each with a 25-s main window and a held-out window. The comparison is against the raw footage and Gyroflow 1.6 renders of the same clips, all measured with the same no-reference metric (`eval/`). Values are residual image motion in px at 1080p, and lower is better. "Calm cruise" is the >2 Hz jitter on the frames where the raw camera moves < 150 px/s.
+The numbers come from the v6 decision gate ([`work/gate/v6/scoreboard.md`](work/gate/v6/scoreboard.md), [`decision.md`](work/gate/v6/decision.md)). Every window is rendered to ProRes 422 HQ, so re-rendering the same plan gives bit-identical frames and scores. Judge noise was measured with sub-pixel shift controls. A change counts only when its 95 % confidence interval over windows excludes 0 and it is larger than that noise.
 
-| clip · window | HF jitter: raw / Gyroflow / **Stillpoint** | calm-cruise: raw / Gyroflow / **Stillpoint** | crop kept: Gyroflow / **Stillpoint** |
-|---|---|---|---|
-| DJI_0025 · 15–40 s | 2.79 / 0.97 / **0.36** | 0.91 / 0.60 / **0.32** | 63.3% / **63.0%** |
-| DJI_0028 · 8–33 s | 1.98 / 1.14 / **0.84** | 0.93 / 0.93 / **0.12** | 61.2% / **60.9%** |
-| DJI_0034 · 15–40 s | 5.58 / 1.31 / **0.51** | 1.42 / 0.55 / **0.13** | 57.6% / **58.1%** |
-| DJI_0027 · 5–30 s | 5.54 / 3.05 / **1.69** | 1.66 / 0.48 / **0.32** | 57.6% / **58.4%** |
-| DJI_0032 · 22–47 s | 4.61 / 1.21 / **0.54** | 1.40 / 0.34 / **0.13** | 54.3% / **54.7%** |
-| DJI_0025 · 1–15 s (held-out) | 3.88 / 0.99 / **0.48** | 0.96 / 0.57 / **0.12** | 59.6% / **63.0%** |
-| DJI_0028 · 38–58 s (held-out) | 5.21 / 4.61 / **4.03** | 1.91 / 0.76 / **0.32** | 61.2% / **60.7%** |
-| DJI_0034 · 1–15 s (held-out) | 1.39 / 0.82 / **0.13** | 1.30 / 0.77 / **0.13** | 64.4% / **58.0%** |
-| DJI_0027 · 100–120 s (held-out) | 2.14 / 0.84 / **0.78** | 0.99 / 0.48 / **0.14** | 60.1% / **58.4%** |
-| DJI_0032 · 120–140 s (held-out) | 3.09 / 0.64 / **0.22** | 2.78 / 0.63 / **0.14** | 61.2% / **54.6%** |
+The test set is five DJI O3 clips, each with a 25-s main window and a held-out window, compared against Gyroflow 1.6 renders of the same clips. There are also five windows of an Osmo Action 4 clip and four of an O4 Pro clip, which have no Gyroflow render and are compared against the original. Everything is measured with the same no-reference metric (`eval/`). Values are residual image motion in px at 1080p, and lower is better. "Calm cruise" is the >2 Hz jitter on the frames where the raw camera moves < 150 px/s.
 
-* Stillpoint has lower high-frequency jitter than Gyroflow on **10 of 10** windows, and 1.5–7.5× lower calm-cruise micro-jitter on all 10.
-* 8–30 Hz vibration is below the raw footage on every window. Gyroflow's renders add 8–30 Hz roll above the raw on 6 of 10.
-* **Osmo Action 4:** the latest fix corrects the exposure-dependent picture offset (`telemetry.oa4_picture_offset(e)`: the frames were placed 0.92 ms early at short shutters, which is 60–100° of phase at 200–300 Hz prop vibration) and adds exposure-averaged rows. On clip 0012 (300–312 s) it took jello from 5.07 px (worse than the raw 4.93) to 1.72 px, HF jitter from 1.78 to 0.65 px, and new single-frame jumps > 1 px from 9 to 0.
+**Defaults per camera.** Each clip starts from its camera's defaults, which are set in one table, `CAMERA_OPTION_DEFAULTS` in `engine/stillpoint/app_bridge.py`. The Mac app and `stillpoint.cli analyze` both read them.
+
+| camera | on by default | toggles (off by default) |
+|---|---|---|
+| DJI O3 | gyro path, closed-loop vision check, timing self-calibration, **full-frame fill** | Max quality (replaces fill; the two can't be combined yet), horizon lock |
+| Osmo Action 4 | gyro path, timing self-calibration | full-frame fill, Max quality, horizon lock |
+| DJI O4 Pro | gyro path, timing self-calibration | full-frame fill, Max quality, horizon lock (not reliable: its gravity estimate is 6–10° off in turns) |
+
+The table below uses the DJI O3 default (fill on):
+
+| clip · window | HF jitter: raw / Gyroflow / **Stillpoint** | calm-cruise: raw / Gyroflow / **Stillpoint** | crop kept: Gyroflow / **Stillpoint** | 1-s win-rate vs Gyroflow |
+|---|---|---|---|---|
+| DJI_0025 · 15–40 s | 2.79 / 0.97 / **0.30** | 0.91 / 0.60 / **0.31** | 63.3% / **62.9%** | 100% |
+| DJI_0028 · 8–33 s | 1.98 / 1.14 / **0.83** | 0.93 / 0.93 / **0.14** | 61.2% / **63.3%** | 91% |
+| DJI_0034 · 15–40 s | 5.58 / 1.31 / **0.36** | 1.42 / 0.55 / **0.13** | 57.6% / **62.5%** | 100% |
+| DJI_0027 · 5–30 s | 5.54 / 3.05 / **0.62** | 1.66 / 0.48 / **0.18** | 57.6% / **60.4%** | 83% |
+| DJI_0032 · 22–47 s | 4.61 / 1.21 / **0.51** | 1.40 / 0.34 / **0.12** | 54.3% / **58.9%** | 96% |
+| DJI_0025 · 1–15 s (held-out) | 3.88 / 0.99 / **0.39** | 0.96 / 0.57 / **0.14** | 59.6% / **62.9%** | 100% |
+| DJI_0028 · 38–58 s (held-out) | 5.21 / 4.61 / **1.90** | 1.91 / 0.76 / **0.40** | 61.2% / **63.3%** | 94% |
+| DJI_0034 · 1–15 s (held-out) | 1.39 / 0.82 / **0.14** | 1.30 / 0.77 / **0.14** | 64.4% / **62.4%** | 100% |
+| DJI_0027 · 100–120 s (held-out) | 2.14 / 0.84 / **0.79** | 0.99 / 0.48 / **0.13** | 60.1% / **60.3%** | 61% |
+| DJI_0032 · 120–140 s (held-out) | 3.09 / 0.64 / **0.19** | 2.78 / 0.63 / **0.15** | 61.2% / **58.7%** | 100% |
+
+**DJI O3:**
+* Stillpoint has lower high-frequency (HF) jitter than Gyroflow on **10 of 10** windows: 0.61 px mean against 1.56, a geo-mean ratio of 0.37.
+* Calm-cruise micro-jitter is 1.9–6.7× lower than Gyroflow's (0.19 px mean against 0.61).
+* 8–30 Hz vibration is below the raw footage on every window.
+* Pooled over all windows, Stillpoint wins 92 % of 1-s segments against Gyroflow.
+
+**What fill adds on the O3.** Fill was compared with the old default (the engine v5 default, fill off) on the same ProRes renders:
+* HF jitter −14.5 % [−24, −4], 2–8 Hz −15.7 %, roll −7.9 %. Single-frame jumps >1 px fell from 13 to 8, and win-rate rose +2.3 points.
+* Nothing got worse, and analysis time rose by 0–3 %.
+* Filled pixels average at most 0.16 % of the frame.
+
+**Osmo Action 4 and O4 Pro** (no Gyroflow render, so compared against the original):
+* Osmo Action 4 clip 0012: HF 0.83 px against the raw 3.11, and 3 of 5 windows pass every gate check.
+* O4 Pro clip 0004: HF 0.55 px against the raw 1.14, and 1 of 4 windows pass.
+* Fill is not their default. On the Osmo Action 4 its HF gain (−7 %) is within noise. On the O4 Pro it made calm cruise worse (+11.7 % [+3, +21]) and raised jumps from 6 to 10.
+
+**Max quality (parallax mesh residual) is a toggle, not a default:**
+* On the O3 it beats the old default by more than fill does: HF −24 %, calm −20 %, roll −27 %.
+* Head-to-head against fill, its HF edge (−11 % [−23, +3]) is within noise, it has more single-frame jumps (18 against 8), and it costs +30–46 % analysis time.
+* On the Osmo Action 4 and O4 Pro its HF change is within noise and analysis takes 5–7× as long.
+
+**Not tested this round:** horizon lock. It stays off by default.
+
+The earlier v4/v5 scoreboards were rendered with the VideoToolbox HEVC encoder, whose output is not deterministic (HF up to ~20 % apart on the same plan). They aren't comparable number-for-number with these tables. The v5 default plans are identical to v4's (5 of 7 byte-identical, the rest within 0.03 px), so "the old default" above covers v4 too.
 
 **Not solved yet:**
-* The strict internal gate (eval 2.0, ten criteria per window) passes on **0 of 10** windows. The main failures are occasional single-frame jumps of 1–4 px that Gyroflow doesn't have, and more jello than Gyroflow on 3 of 10 windows (0027 5–30, 0028 38–58, 0034 1–15).
-* Low flights past large near objects show parallax, which no rotation can fix. DJI_0028 beside a train is the example: there the vision check is blind and Stillpoint only matches Gyroflow.
-* Osmo Action 4 timing at 5–16 ms shutters isn't validated yet, and the smoother leaks a little 2–3.5 Hz roll.
-* The held-out windows use the crop chosen for the whole clip. On two of them the crop is 6 points tighter than Gyroflow's.
+* The strict internal gate (eval 2.0, ten criteria per window) passes on **1 of 10** O3 windows. The failures are occasional single-frame jumps of 1–3 px that Gyroflow doesn't have (3 windows), more jello than Gyroflow (2), calm cruise (2), win-rate against Gyroflow (DJI_0027: 83 % and 61 %), corner wobble (1), and a crop tighter than Gyroflow's on two held-out windows.
+* Low flights past large near objects show parallax, which no rotation can fix. DJI_0028 beside a train is the example: the vision check is blind there, and it is Stillpoint's worst clip (HF 0.83 against Gyroflow's 1.14 on the main window, 1.90 against 4.61 on the held-out one).
+* Osmo Action 4 timing at 5–16 ms shutters isn't validated yet.
 
 ## Supported cameras
 
@@ -95,7 +127,7 @@ The app finds the engine in the repo it was built from, and you can change that 
 ## Engine CLI and tests
 
 ```sh
-PYTHONPATH=engine .venv/bin/python -m stillpoint.cli analyze CLIP.MP4 --out work/CLIP
+PYTHONPATH=engine .venv/bin/python -m stillpoint.cli analyze CLIP.MP4 --out work/CLIP   # camera defaults; --no-fill / --mesh / --horizon-lock S override
 PYTHONPATH=engine .venv/bin/python -m stillpoint.cli render CLIP.MP4 --plan work/CLIP/plan.spplan --out out.mov
 PYTHONPATH=engine .venv/bin/python -m pytest tests -q
 ```

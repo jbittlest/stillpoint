@@ -1,5 +1,7 @@
 // Headless end-to-end check of the app's own wiring (no window): storage migration -> AppModel -> BridgeJob probe ->
-// pre-flight -> analyze (progress, cache manifest, plan, speed history) -> export queue (sprender PROGRESS lines) ->
+// pre-flight -> engine v5 options (defaults from the engine, round trip through `analyze --dry-run`, exclusivity) ->
+// analyze (progress, cache manifest, plan, speed history, timing auto-calibration readout) -> export queue (sprender
+// PROGRESS lines) -> re-analysis with Full-frame fill toggled from the camera default (stale flag, FILL plan, preview) ->
 // cancel a real re-analysis (the whole process group must be gone, checked with ps) -> a fake bridge that stalls and
 // ignores SIGTERM (stall watchdog, SIGKILL after 5 s) -> a fake bridge that crashes (error panel, scratch cleanup,
 // Retry) -> a structured engine error -> quit while running (shutdown kills the group) -> no orphans (ps).
@@ -137,6 +139,88 @@ enum AppFlowTest {
         } else { check(false, "pre-flight available") }
         check(!clip.onRemovableMedia, "internal-disk source: no removable-media warning")
 
+        // ---------------------------------------------------------------- engine v5 options
+        let defaults = clip.probe?.options?.defaults
+        if let o = clip.probe?.options, let d = defaults {
+            let hl = d.horizonLock ?? 0
+            if let m = clip.manifest {
+                // a cached analysis of this clip (e.g. migrated from the legacy cache): the panel shows ITS settings,
+                // not the camera defaults (which may have changed since, e.g. fill on for the O3 in gate v6)
+                check(clip.fill == (m.params.fill ?? false) && clip.maxQuality == (m.params.mesh ?? false)
+                      && clip.horizonLock == m.params.horizonLock,
+                      "clip with a cached analysis starts from its settings (fill \(clip.fill), max quality \(clip.maxQuality), horizon \(clip.horizonLock)); the engine's defaults for \(clip.probe?.cameraName ?? "?") are fill \(d.fill ?? false), max quality \(d.mesh ?? false), horizon \(hl), timecal \(d.timecal ?? false); exclusive \(o.exclusive ?? [])")
+            } else {
+                check(clip.fill == (d.fill ?? false) && clip.maxQuality == (d.mesh ?? false) && clip.horizonLock == (hl > 0)
+                      && abs(clip.horizonStrength - (hl > 0 ? hl : (d.horizonStrength ?? 1))) < 1e-9
+                      && abs(clip.rollLimitDeg - (d.rollLimitDeg ?? 0)) < 1e-9,
+                      "clip starts from the engine's defaults for \(clip.probe?.cameraName ?? "?"): fill \(clip.fill), max quality \(clip.maxQuality), horizon \(clip.horizonLock) (strength \(clip.horizonStrength), bank \(clip.rollLimitDeg)°), timecal \(d.timecal ?? false); exclusive \(o.exclusive ?? [])")
+            }
+            let saved = (clip.horizonLock, clip.horizonStrength, clip.rollLimitDeg, clip.fill, clip.maxQuality)
+            let savedManifest = clip.manifest
+            clip.horizonLock = true; clip.horizonStrength = 0.6; clip.rollLimitDeg = 15; clip.fill = true; clip.maxQuality = false
+            let args = clip.analyzeArgs
+            switch BridgeJob.runSync(args + ["--dry-run"], timeout: 120) {
+            case .success(let obj):
+                let p = (try? JSONSerialization.data(withJSONObject: obj["params"] ?? [:]))
+                    .flatMap { try? JSONIO.snake.decode(AnalysisParams.self, from: $0) }
+                let ap = obj["analyze_params"] as? [String: Any] ?? [:]
+                let fo = ap["fill_overscan"] as? Double ?? -1
+                check(p?.horizonLock == true && p?.horizonStrength == 0.6 && p?.rollLimitDeg == 15 && p?.fill == true
+                      && p?.mesh == false && ap["horizon_lock"] as? Double == 0.6 && ap["roll_limit_deg"] as? Double == 15
+                      && ap["fill"] as? Bool == true && ap["mesh_residual"] as? Bool == false
+                      && abs(fo - (d.fillOverscan ?? -2)) < 1e-9 && ap["timecal"] as? Bool == (d.timecal ?? true),
+                      "option round trip: \(args.dropFirst(4).joined(separator: " ")) -> engine horizon_lock \(ap["horizon_lock"] ?? "-"), roll_limit_deg \(ap["roll_limit_deg"] ?? "-"), fill \(ap["fill"] ?? "-") (overscan \(fo)), mesh_residual \(ap["mesh_residual"] ?? "-"), timecal \(ap["timecal"] ?? "-")")
+                if let p {
+                    clip.manifest = AnalysisManifest(clip: ClipIdentityJSON(path: clip.url.path, sizeBytes: 0, mtimeNs: 0),
+                                                     params: p, created: nil, seconds: nil, plan: "", timing: nil, summary: nil)
+                    let fresh = !clip.settingsChanged
+                    clip.horizonStrength = 0.8
+                    let s1 = clip.changedSettings
+                    clip.horizonStrength = 0.6; clip.rollLimitDeg = 20
+                    let s2 = clip.changedSettings
+                    clip.rollLimitDeg = 15; clip.fill = false
+                    let s3 = clip.changedSettings
+                    clip.fill = true; clip.horizonLock = false
+                    let s4 = clip.changedSettings
+                    clip.horizonLock = true
+                    check(fresh && s1 == ["Horizon lock"] && s2 == ["Horizon lock"] && s3 == ["Full-frame fill"]
+                          && s4 == ["Horizon lock"] && !clip.settingsChanged,
+                          "manifest params read back = the panel (not stale); strength / bank limit / fill / horizon changes flag re-analysis: \([s1, s2, s3, s4])")
+                }
+            case .failure(let e):
+                check(false, "analyze --dry-run with the app's arguments: \(e.localizedDescription)")
+            }
+            clip.manifest = savedManifest
+            // exclusivity: the engine cannot combine fill and mesh -> the other switch is disabled with a hint
+            if o.excludes("fill", "mesh") {
+                clip.fill = true; clip.maxQuality = false
+                let blockA = clip.maxQualityBlockedBy
+                clip.maxQuality = true                 // what the disabled switch cannot do: still never both
+                let argsA = clip.analyzeArgs
+                clip.fill = false
+                let blockB = clip.fillBlockedBy, argsB = clip.analyzeArgs
+                let eMesh = model.preflight(clip)?.estimate ?? 0
+                clip.maxQuality = false
+                let ePlain = model.preflight(clip)?.estimate ?? 0
+                let factor = o.timeFactor?["mesh"] ?? 1.4          // applies to the per-second part of the estimate
+                let o_ = SpeedHistory.overhead
+                check(blockA == "Full-frame fill" && blockB == "Max quality" && argsA.contains("--fill") && argsA.contains("--no-mesh")
+                      && argsB.contains("--mesh") && argsB.contains("--no-fill") && factor > 1
+                      && abs((eMesh - o_) - (ePlain - o_) * factor) < 0.5,
+                      String(format: "exclusivity: fill disables Max quality (“%@”) and vice versa (“%@”); forced both -> args ask for fill only; Max quality estimate %.0f s vs %.0f s",
+                             blockA ?? "-", blockB ?? "-", eMesh, ePlain))
+                if case .failure(let e) = BridgeJob.runSync(Array(clip.analyzeArgs.prefix(4)) + ["--fill", "--mesh", "--dry-run"], timeout: 120) {
+                    check(e.localizedDescription.contains("cannot be combined"), "the bridge refuses fill + mesh (bad_args): \(e.localizedDescription.prefix(90))")
+                } else {
+                    check(false, "the bridge refuses fill + mesh")
+                }
+            }
+            (clip.horizonLock, clip.horizonStrength, clip.rollLimitDeg, clip.fill, clip.maxQuality) = saved
+            check(!clip.analyzeArgs.contains("--mesh") || (defaults?.mesh ?? false), "options back to the engine defaults for the analysis")
+        } else {
+            check(false, "probe reports the engine's options")
+        }
+
         // ---------------------------------------------------------------- fresh analysis through the queue
         let speedBefore = model.speed.entries.count
         var progressSeen: [Double] = []
@@ -171,6 +255,14 @@ enum AppFlowTest {
                 print("NOTE report.json has no 'quality' (engine without the independent check): \(s.qualityError ?? "-")")
             }
         } else { check(false, "manifest summary present") }
+        if let t = clip.manifest?.summary?.timecal {
+            let tr = TimingReadout(t: t)
+            let v = tr.value + (tr.detail.map { " · " + $0 } ?? "")
+            check(["applied", "confirmed", "kept", "skipped"].contains(t.state) && !tr.value.isEmpty && clip.manifest?.params.timecal == (defaults?.timecal ?? true),
+                  "timing auto-calibration readout: “\(v)” (state \(t.state))")
+        } else {
+            check(false, "summary carries the timing auto-calibration (engine v5)")
+        }
         check(model.speed.entries.count == speedBefore + 1, "analysis time recorded for future estimates (\(model.speed.entries.last.map { String(format: "%.0f s for %.1f s of clip", $0.seconds, $0.durationS) } ?? "-"))")
         check(model.player.hasPlan, "preview player switched to the new plan")
 
@@ -191,6 +283,33 @@ enum AppFlowTest {
         check(fr.count >= 3 && msgs.contains { $0.range(of: #"^\d+/268 frames"#, options: .regularExpression) != nil },
               "export progress from sprender PROGRESS lines (e.g. “\(msgs.filter { $0.contains("/268") }.sorted().last ?? "-")”)")
         try? fm.removeItem(at: out)
+
+        // ---------------------------------------------------------------- re-analysis with Full-frame fill toggled (engine v5)
+        if clip.fillSupported {
+            // a camera whose default is fill (DJI O3, gate v6): the analysis above already made a FILL plan -> check it,
+            // then re-analyse with fill OFF; otherwise re-analyse with fill ON
+            let fillDefault = clip.fill
+            if fillDefault {
+                check(clip.manifest?.params.fill == true && clip.plan?.hasFill == true && clip.manifest?.summary?.fill != nil
+                      && model.player.planHasFill,
+                      "camera default fill: the default analysis has a FILL section (manifest fill=true) and the preview uses the fill kernels")
+            }
+            clip.maxQuality = false
+            clip.fill = !fillDefault
+            check(clip.changedSettings == ["Full-frame fill"], "switching Full-frame fill \(clip.fill ? "on" : "off") flags the analysis for re-analysis: \(clip.changedSettings)")
+            let tf = Date()
+            model.analyze(clip)
+            let done = spin(900) { !clip.isBusy }
+            let fs = clip.manifest?.summary?.fill
+            let want = clip.fill
+            check(done && clip.isAnalyzed && clip.manifest?.params.fill == want && (clip.plan?.hasFill ?? false) == want
+                  && !clip.settingsChanged && (fs != nil) == want,
+                  String(format: "re-analysis with fill %@ in %.0f s: FILL section %@, manifest fill=%@, %@ of frames filled, not stale",
+                         want ? "on" : "off", Date().timeIntervalSince(tf), (clip.plan?.hasFill ?? false) ? "yes" : "no",
+                         want ? "true" : "false", fs?.framesFrac.map { Fmt.pct($0) } ?? "-"))
+            check(model.player.planHasFill == want && model.player.hasPlan,
+                  want ? "preview switched to the fill plan (fill kernels + neighbour frames)" : "preview switched to the plain plan (no fill kernels)")
+        }
 
         // ---------------------------------------------------------------- cancel a real re-analysis: whole group gone
         let planBefore = clip.manifest?.plan

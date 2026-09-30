@@ -34,3 +34,4 @@ web/dist/
 
 # macOS
 .DS_Store
+.claude/
